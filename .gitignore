@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+*.log
+
+# dependencias y secretos del backend
+node_modules/
+.env
+.env.local
