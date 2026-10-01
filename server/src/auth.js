@@ -36,11 +36,16 @@ export function verifyToken(token) {
 export const hash = (plain) => bcrypt.hash(plain, 12);
 export const check = (plain, stored) => bcrypt.compare(plain, stored);
 
+// hash real con el mismo costo: comparar contra uno inválido responde al instante
+// y delata por tiempo qué mails están registrados
+let dummy = null;
+const dummyHash = async () => (dummy ??= await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 12));
+
 export async function login(email, password) {
-  const { rows } = await q('select * from users where email = $1', [String(email).toLowerCase().trim()]);
+  const { rows } = await q('select * from users where email = $1', [String(email ?? '').toLowerCase().trim()]);
   const user = rows[0];
   // se compara igual cuando no existe el usuario, para no delatar qué mails están registrados
-  const ok = await check(password || '', user?.password_hash || '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvaliduO');
+  const ok = await check(String(password ?? ''), user?.password_hash || await dummyHash());
   if (!user || !ok) return null;
   return user;
 }

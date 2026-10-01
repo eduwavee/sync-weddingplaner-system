@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "description": "API de Alianza Wedding Studio — Sync Solutions",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node --env-file=.env src/index.js",
     "dev": "node --env-file=.env --watch src/index.js",
     "seed": "node --env-file=.env src/seed.js",
-    "test": "node test/logic.test.mjs"
+    "test": "node test/logic.test.mjs",
+    "test:db": "node --test test/integration.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

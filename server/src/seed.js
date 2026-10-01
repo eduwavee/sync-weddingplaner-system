@@ -36,8 +36,8 @@ async function main() {
   const file = process.argv[2];
   if (file) {
     const state = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const n = await saveState(plannerId, state.weddings || []);
-    console.log(`${n} bodas cargadas desde ${file}`);
+    const out = await saveState(plannerId, { weddings: state.weddings || [], force: true });
+    console.log(`${out.saved.length} bodas cargadas desde ${file}`);
 
     // una cuenta por pareja, para que entren a su portal
     for (const w of state.weddings || []) {

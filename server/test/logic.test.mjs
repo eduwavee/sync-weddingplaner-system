@@ -55,7 +55,8 @@ const gi = guestIns.params;
 t('el acompañante se inserta después del titular', gi.indexOf('g1') < gi.indexOf('g2'));
 t('plus_of viaja', gi.includes('g1') && gi.includes('g2'));
 t('borra hijos antes de insertar', sent.findIndex((s) => s.sql.startsWith('delete')) < sent.findIndex((s) => s.sql.startsWith('insert into partners')));
-t('el upsert filtra por dueño', sent[0].sql.includes('where weddings.owner_id = $2'));
+t('el upsert filtra por dueño', sent.find((s) => s.sql.includes('insert into weddings')).sql.includes('where weddings.owner_id = $2'));
+t('antes de guardar mira de quién es la boda', sent[0].sql.includes('select owner_id, rev from weddings'));
 t('las cuotas del gasto van a expense_plan', inserts.some((s) => s.sql.includes('expense_plan') && s.params.includes('c1')));
 t('paid nunca supera a total', (() => { const e = inserts.find((s) => s.sql.includes('insert into expenses')); return e.params.includes(2); })());
 t('placeholders bien numerados', inserts.every((s) => {
@@ -63,6 +64,67 @@ t('placeholders bien numerados', inserts.every((s) => {
   return max === s.params.length;
 }));
 t('timeline mapea key -> is_key', inserts.find((s) => s.sql.includes('insert into timeline')).params.includes(true));
+
+// --- una boda ajena no se toca ---
+const ajena = { query: async (sql) => (sql.includes('select owner_id') ? { rows: [{ owner_id: 'otra', rev: 3 }] } : { rows: [] }) };
+let err = null;
+try { await repo.saveWedding(ajena, 'owner1', w); } catch (e) { err = e; }
+t('boda de otra planner: 403 y no borra nada', err?.status === 403);
+
+// --- revisión vieja: conflicto, sin escribir ---
+const writes = [];
+const vieja = { query: async (sql) => { if (!sql.startsWith('select')) writes.push(sql);
+  return sql.includes('select owner_id') ? { rows: [{ owner_id: 'owner1', rev: 5 }] } : { rows: [] }; } };
+const r1 = await repo.saveWedding(vieja, 'owner1', { ...w, rev: 4 });
+t('rev vieja devuelve conflicto', r1.conflict === true && writes.length === 0);
+const r2 = await repo.saveWedding(vieja, 'owner1', { ...w, rev: 4 }, { force: true });
+t('con force guarda y sube la rev', r2.rev === 6 && writes.length > 0);
+
+// --- limpieza: lo que antes trababa la sincronización para siempre ---
+const sucia = repo.sanitize({
+  ...w,
+  guests: [
+    { id: 'a', name: 'Ana', rsvp: 'si', table: 2 },
+    { id: 'b', name: 'Acomp. de alguien borrado', rsvp: 'si', plusOf: 'zzz' },
+    { id: 'a', name: 'Ana duplicada' },
+    { id: 'c', name: 'Carlos', rsvp: 'quizas', table: 4 },
+    { id: 'd', name: 'Dora', token: 'tok1' }, { id: 'e', name: 'Eva', token: 'tok1' },
+  ],
+  expenses: [{ id: 'x', concept: 'DJ', vendorId: 'no-existe', total: 10, paid: 50, plan: [] }],
+  docs: [{ id: 'k', name: 'malo', url: 'javascript:alert(1)' }, { id: 'l', name: 'bueno', url: 'https://drive.google.com/x' }],
+});
+t('descarta acompañantes huérfanos', !sucia.guests.some((g) => g.id === 'b'));
+t('descarta ids duplicados', sucia.guests.filter((g) => g.id === 'a').length === 1);
+t('rsvp inválido pasa a pendiente y pierde la mesa', (() => { const c = sucia.guests.find((g) => g.id === 'c'); return c.rsvp === 'pendiente' && c.table === null; })());
+t('tokens repetidos se regeneran', new Set(sucia.guests.map((g) => g.token)).size === sucia.guests.length);
+t('gasto con proveedor inexistente queda sin proveedor', sucia.expenses[0].vendorId === null);
+t('paid se recorta al total', sucia.expenses[0].paid === 10);
+t('links que no son http se descartan', sucia.docs.length === 1 && sucia.docs[0].id === 'l');
+
+// --- respuestas de invitados contra la copia de la planner ---
+const ayer = '2026-09-30T10:00:00.000Z', hoy = new Date('2026-10-01T10:00:00Z');
+const cliente = [
+  { id: 'g1', name: 'Pedro', rsvp: 'pendiente', diet: '', table: 3, rsvpAt: null },
+  { id: 'g2', name: 'Lola', rsvp: 'si', diet: '', rsvpAt: ayer },
+  { id: 'g9', name: 'Acomp. viejo', plusOf: 'g1', rsvp: 'si' },
+];
+const base = [
+  { id: 'g1', name: 'Pedro', rsvp: 'no', diet: 'Vegano', rsvp_at: hoy, plus_of: null },
+  { id: 'g2', name: 'Lola', rsvp: 'si', diet: '', rsvp_at: new Date(ayer), plus_of: null },
+  { id: 'g7', name: 'Ya no está', rsvp: 'si', rsvp_at: hoy, plus_of: null },
+];
+const m = repo.mergeGuestAnswers(cliente.map((g) => ({ ...g })), base);
+const p1 = m.guests.find((g) => g.id === 'g1');
+t('gana la respuesta del invitado que la planner no vio', m.merged && p1.rsvp === 'no' && p1.diet === 'Vegano');
+t('si no viene, pierde la mesa', p1.table === null);
+t('el acompañante del cliente se reemplaza por el de la base', !m.guests.some((g) => g.id === 'g9'));
+t('lo que la planner ya vio no se toca', m.guests.find((g) => g.id === 'g2').rsvpAt === ayer);
+t('si la planner lo borró, sigue borrado', !m.guests.some((g) => g.id === 'g7'));
+t('sin respuestas nuevas no hay merge', repo.mergeGuestAnswers([{ id: 'g2', rsvpAt: ayer }], base.slice(1, 2)).merged === false);
+
+// --- lo que ven los novios ---
+const nov2 = repo.forCouple({ ...w, log: [{ id: 'l' }], messages: [{ id: 'm' }], profile: { notes: 'interna', faq: {} }, lead: { a: 1 } });
+t('los novios no ven bitácora, mensajes ni notas internas', !nov2.log.length && !nov2.messages.length && !('notes' in nov2.profile) && !nov2.lead);
 
 console.log(out.join('\n'));
 console.log(out.some((l) => l.startsWith('FALLA')) ? '\nHAY FALLAS' : '\nTodo verde');

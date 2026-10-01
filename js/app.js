@@ -14,7 +14,25 @@ const fLong=s=>{const d=parse(s);return `${DIAS[d.getDay()]} ${d.getDate()} de $
 const money=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Math.round(n));
 const moneyK=n=>n>=1e6?'$ '+(n/1e6).toLocaleString('es-AR',{maximumFractionDigits:1})+' M':money(n);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid=()=>Math.random().toString(36).slice(2,9);
+/* ids y tokens con crypto: los ids viajan a la base como clave primaria y el
+   token es lo único que protege el link personal de cada invitado */
+const rnd=n=>{const a=new Uint8Array(n);crypto.getRandomValues(a);return Array.from(a,b=>'abcdefghijkmnpqrstuvwxyz23456789'[b&31]).join('')};
+const uid=()=>rnd(10);
+const tok=()=>rnd(12);
+const safeUrl=u=>/^https?:\/\//i.test(String(u||'').trim())?String(u).trim():'';
+/* íconos dibujados, un solo trazo de 1.6 */
+const IC={
+  agenda:'<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  inbox:'<path d="M3.5 13.5 6 5.5h12l2.5 8V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 13.5h4.5l1.5 2.5h5l1.5-2.5h4.5"/>',
+  chart:'<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
+  chev:'<path d="m9 6 6 6-6 6"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  left:'<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  right:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  out:'<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/>',
+  rings:'<circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/>',
+};
+const ic=(n,cls='')=>`<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${IC[n]}</svg>`;
 const pct=(a,b)=>b?Math.round(a/b*100):0;
 const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
 function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -98,7 +116,7 @@ function seed(){
       p2:{name:'Emiliano Soria',phone:'+54 381 482-9964',email:'emisoria@gmail.com',ig:'@emisoria'},
       note:'Consulta por el formulario de la web. Presupuesto ajustado, evalúan solo coordinación del día.'},
   ];
-  return {weddings:specs.map(sp=>buildWedding(sp,addDays(base,sp.off))).concat(leadSpecs.map(sp=>buildLead(sp,addDays(base,sp.off)))),v:4};
+  return {weddings:specs.map(sp=>buildWedding(sp,addDays(base,sp.off))).concat(leadSpecs.map(sp=>buildLead(sp,addDays(base,sp.off)))),v:5};
 }
 
 /* seña / segundo pago / saldo: así se paga de verdad a un proveedor */
@@ -165,7 +183,7 @@ function buildWedding(sp,date){
     const dr=R(); const diet=dr<.08?'Vegetariano':dr<.12?'Celíaco':dr<.14?'Vegano':'';
     const group=pick(G);
     w.guests.push({id:uid(),name:pick(F)+' '+pick(L),side:R()<.5?'Novia':'Novio',group,rsvp,diet,table:null,
-      kind:group==='Familia'&&R()<.14?'niño':'adulto',plus:group!=='Familia'&&R()<.3,plusOf:null,
+      kind:group==='Familia'&&R()<.14?'niño':'adulto',plus:group!=='Familia'&&R()<.3,plusOf:null,token:tok(),
       phone:R()<.72?`+54 381 ${Math.floor(R()*5)+4}${Math.floor(R()*9)}${Math.floor(R()*9)}-${String(Math.floor(R()*9000)+1000)}`:''});
   }
   if(sp.p>.5){
@@ -265,20 +283,48 @@ function migrate(S){
     w.tableMeta=w.tableMeta||[];
     (w.expenses||[]).forEach(e=>{e.plan=e.plan||[]});
   });
-  S.v=4;return S;
+  /* v5: link personal por invitado (#rsvp/<slug>/<token>) */
+  S.weddings.forEach(w=>(w.guests||[]).forEach(g=>{
+    if(!g.token)g.token=tok();
+    if(g.kind===undefined)g.kind='adulto';
+    if(g.plus===undefined)g.plus=false;
+    if(g.plusOf===undefined)g.plusOf=null;
+    if(g.phone===undefined)g.phone='';
+  }));
+  S.v=5;return S;
 }
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
-  try{window.Alianza&&window.Alianza.push(S)}catch(e){}};
+const AL=()=>window.Alianza||{};
+const API=()=>!!AL().enabled;
+const isCouple=()=>API()&&AL().user&&AL().user.role==='novios';
+/* con backend la verdad es el servidor: no se deja una copia de las bodas reales en el navegador */
+const save=()=>{if(!API()){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+  try{AL().push&&AL().push(S)}catch(e){}};
 const active=()=>S.weddings.filter(w=>w.status==='activa');
 const leads=()=>S.weddings.filter(w=>w.status==='lead');
 const archived=()=>S.weddings.filter(w=>w.status==='finalizada');
 const ui={view:'planner',scope:'studio',wid:(active()[0]||S.weddings[0]).id,tab:'resumen',gFilter:'todos',gQuery:'',
   tOwner:'todos',focus:null,rsvp:null,rsvpQuery:'',rsvpGuest:null,rsvpDone:false,showArchive:false,
-  msgT:null,msgBody:null,botLog:[],expOpen:null};
+  msgT:null,msgBody:null,botLog:[],expOpen:null,pub:null,rsvpByToken:false,rsvpOpened:false};
+/* #rsvp/<slug>            link general (demo)
+   #rsvp/<slug>/<id boda>  link general
+   #rsvp/<slug>/<token>    link personal del invitado: entra directo a su respuesta */
 function route(){
-  const h=location.hash.replace('#','');
-  if(h.indexOf('rsvp/')===0){const w=S.weddings.find(x=>x.slug===h.slice(5));if(w){ui.rsvp=w.id;return}}
+  let h=location.hash.replace('#','');try{h=decodeURIComponent(h)}catch(e){}
   ui.rsvp=null;
+  if(h.indexOf('rsvp/')===0){
+    const [slug,key]=h.slice(5).split('/');
+    if(API()){
+      const k=key||slug;
+      if(!ui.pub||ui.pub.key!==k){ui.pub={key:k,loading:true};ui.rsvpGuest=null;ui.rsvpDone=false;ui.rsvpByToken=false;ui.rsvpQuery='';loadPublic()}
+      ui.rsvp='remote';return;
+    }
+    const w=(key&&(S.weddings.find(x=>x.id===key)||S.weddings.find(x=>x.guests.some(g=>g.token===key))))||S.weddings.find(x=>x.slug===slug);
+    if(!w||w.status==='lead'){ui.rsvp='missing';return}
+    ui.rsvp=w.id;
+    const g=key&&w.guests.find(x=>x.token===key&&!x.plusOf);
+    if(g&&ui.rsvpGuest!==g.id){ui.rsvpGuest=g.id;ui.rsvpByToken=true;ui.rsvpDone=g.rsvp!=='pendiente'}
+    return;
+  }
   if(h==='portal'){ui.view='portal';ui.scope='wedding'}
 }
 route();
@@ -326,51 +372,92 @@ const fileName=(w,what)=>`${slugify(w.couple)}-${what}-${fmtISO(today0())}.csv`;
 
 /* ================= render ================= */
 const app=document.getElementById('app');
+/* la animación de entrada acompaña los cambios de vista, no cada click:
+   render() redibuja todo, así que sólo se marca cuando cambia la vista o el tab */
+let lastView=null,lastTab=null;
 function render(){
-  if(ui.rsvp){app.className='app public';app.innerHTML=rsvpPage();return}
-  app.className='app';
+  if(ui.rsvp){app.className='app public';app.innerHTML=rsvpPage();restoreFocus();return}
+  if(ui.booting){app.className='app solo';app.innerHTML=bootScreen();return}
+  if(isCouple()){ui.scope='wedding';ui.view='portal';if(AL().user.weddingId)ui.wid=AL().user.weddingId;
+    if(!S.weddings.length){app.className='app solo';app.innerHTML=`<main class="main">${mobileBar()}<div class="panel"><div class="empty">Tu planner todavía no cargó tu boda. Cuando lo haga, la vas a ver acá.</div></div></main>`;paintSync();return}}
+  app.className=isCouple()?'app solo':'app';
   const body=ui.scope==='studio'?studio():ui.scope==='leads'?leadsView():ui.scope==='negocio'?negocio():wedding();
-  app.innerHTML=sidebar()+`<main class="main">${mobileBar()}${body}</main>`;
-  if(ui.focus){const el=document.getElementById(ui.focus);if(el){el.focus();const v=el.value;el.setSelectionRange?.(v.length,v.length)}}
+  const view=ui.scope+(ui.scope==='wedding'?'|'+ui.wid+'|'+ui.view:''), tab=view+'|'+ui.tab;
+  const enter=view!==lastView?'enter-view':tab!==lastTab?'enter-tab':'';
+  if(lastView&&view!==lastView)scrollTo(0,0);
+  lastView=view;lastTab=tab;
+  app.innerHTML=(isCouple()?'':sidebar())+`<main class="main ${enter}" id="main">${mobileBar()}${body}</main>`;
+  paintSync();
+  restoreFocus();
 }
+function restoreFocus(){
+  if(!ui.focus)return;
+  const el=document.getElementById(ui.focus);
+  if(el){el.focus();const v=el.value;try{el.setSelectionRange(v.length,v.length)}catch(e){}}
+}
+function bootScreen(){
+  return `<div class="boot" role="status">${ic('rings','boot-ic')}<span>Trayendo tus bodas…</span></div>`;
+}
+
+/* ---------- estado de guardado (sólo con backend) ---------- */
+const SYNC={
+  saved:['ok','Guardado'],pending:['busy','Guardando…'],saving:['busy','Guardando…'],idle:['busy','Conectando…'],
+  offline:['warn','Sin conexión · reintentando'],error:['bad','No se pudo guardar'],
+  conflict:['warn','Hay una boda con cambios de otra sesión'],auth:['warn','La sesión venció'],
+};
+const syncSlot=(cls='')=>API()?`<div class="sync ${cls}" data-sync role="status" aria-live="polite"></div>`:'';
+function paintSync(){
+  const st=AL().status, [tone,label]=SYNC[st]||SYNC.saved, detail=AL().detail||'';
+  document.querySelectorAll('[data-sync]').forEach(el=>{
+    el.dataset.tone=tone;
+    el.title=detail;
+    el.innerHTML=`<i aria-hidden="true"></i><span>${esc(st==='saving'&&detail?detail:label)}</span>${tone==='bad'||st==='offline'?'<button class="linkbtn" data-a="sync-retry">Reintentar</button>':''}`;
+  });
+}
+
 function sidebar(){
   const ls=leads(), arch=archived(), act=active();
   const byDate=a=>a.slice().sort((x,y)=>x.date.localeCompare(y.date));
-  const item=w=>{const d=daysUntil(w.date);return `
-    <button class="witem ${ui.scope==='wedding'&&ui.wid===w.id?'on':''}" data-a="open" data-id="${w.id}">
+  const item=w=>{const d=daysUntil(w.date), on=ui.scope==='wedding'&&ui.wid===w.id;return `
+    <button class="witem ${on?'on':''}" data-a="open" data-id="${w.id}" ${on?'aria-current="page"':''}>
       <span class="n">${coupleHTML(w.couple)}</span>
       <span class="d">${fDate(w.date)} · ${esc(w.city)}</span>
       <span class="c">${w.status==='finalizada'?'✓':d<0?'—':d}<small>${w.status==='finalizada'?'lista':d===1?'día':'días'}</small></span>
     </button>`};
+  const nav=(k,icon,label,extra='')=>`<button class="studio-btn ${ui.scope===k?'on':''}" data-a="${k}" ${ui.scope===k?'aria-current="page"':''}>${ic(icon)}<span>${label}</span>${extra}</button>`;
+  const u=AL().user;
   return `<aside class="side">
-    <div class="brand"><b>Alianza</b><span>wedding studio</span></div>
-    <div class="navblock">
-      <button class="studio-btn ${ui.scope==='studio'?'on':''}" data-a="studio">◇ Agenda del estudio</button>
-      <button class="studio-btn ${ui.scope==='leads'?'on':''}" data-a="leads">◈ Consultas${ls.length?`<span class="cnt">${ls.length}</span>`:''}</button>
-      <button class="studio-btn ${ui.scope==='negocio'?'on':''}" data-a="negocio">◆ El negocio</button>
-    </div>
+    <div class="brand">${ic('rings','brand-ic')}<b>Alianza</b><span>wedding studio</span></div>
+    <nav class="navblock" aria-label="Estudio">
+      ${nav('studio','agenda','Agenda del estudio')}
+      ${nav('leads','inbox','Consultas',ls.length?`<span class="cnt">${ls.length}</span>`:'')}
+      ${nav('negocio','chart','El negocio')}
+    </nav>
     <div>
       <h4>Bodas en curso</h4>
-      <div class="wlist">${byDate(act).map(item).join('')||'<p class="muted" style="font-size:12px;padding:0 10px">Ninguna boda activa.</p>'}</div>
+      <div class="wlist">${byDate(act).map(item).join('')||'<p class="muted side-empty">Ninguna boda activa.</p>'}</div>
     </div>
     ${arch.length?`<div>
-      <h4><button class="linkbtn" data-a="archive" style="text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:600">Archivo · ${arch.length} ${ui.showArchive?'▾':'▸'}</button></h4>
+      <h4><button class="linkbtn side-toggle" data-a="archive" aria-expanded="${ui.showArchive}">Archivo · ${arch.length} ${ic('chev',ui.showArchive?'open':'')}</button></h4>
       ${ui.showArchive?`<div class="wlist">${byDate(arch).reverse().map(item).join('')}</div>`:''}
     </div>`:''}
     <div class="side-foot">
-      <span>Demo de portfolio · datos ficticios</span>
+      ${syncSlot()}
+      ${API()?`<span class="who">${esc(u?u.name:'')}</span><button class="linkbtn" data-a="logout">${ic('out')} Cerrar sesión</button>`
+      :`<span>Demo de portfolio · datos ficticios</span>
       <span>Los cambios se guardan en este navegador.</span>
-      <button class="linkbtn" data-a="reset">Restablecer datos de ejemplo</button>
+      <button class="linkbtn" data-a="reset">Restablecer datos de ejemplo</button>`}
     </div>
   </aside>`;
 }
 function mobileBar(){
+  if(isCouple())return `<div class="mobile-bar couple-bar"><div class="brand">${ic('rings','brand-ic')}<b>Alianza</b></div>${syncSlot()}<button class="btn sm ghost" data-a="logout">${ic('out')} Salir</button></div>`;
   const grp=(label,list)=>list.length?`<optgroup label="${label}">${list.map(w=>`<option value="${w.id}" ${ui.scope==='wedding'&&ui.wid===w.id?'selected':''}>${esc(w.couple)} · ${fDate(w.date)}</option>`).join('')}</optgroup>`:'';
   const opts=[`<option value="studio" ${ui.scope==='studio'?'selected':''}>Agenda del estudio</option>`,
     `<option value="leads" ${ui.scope==='leads'?'selected':''}>Consultas (${leads().length})</option>`,
     `<option value="negocio" ${ui.scope==='negocio'?'selected':''}>El negocio</option>`,
     grp('Bodas en curso',active()),grp('Archivo',archived())];
-  return `<div class="mobile-bar" style="margin:-26px calc(-1*clamp(16px,3.2vw,40px)) 20px"><div class="brand"><b>Alianza</b></div><select class="select" id="mselect" data-c="mselect" aria-label="Elegir boda">${opts.join('')}</select></div>`;
+  return `<div class="mobile-bar"><div class="brand">${ic('rings','brand-ic')}<b>Alianza</b></div><select class="select" id="mselect" data-c="mselect" aria-label="Elegir boda">${opts.join('')}</select>${syncSlot('compact')}</div>`;
 }
 
 /* ---------- studio overview ---------- */
@@ -378,9 +465,8 @@ function studio(){
   const ws=active().slice().sort((a,b)=>a.date.localeCompare(b.date));
   const ls=leads(), nd=parse(fmtISO(today0()));
   const head=`<div class="head"><div>
-    <div class="eyebrow">Agenda del estudio · ${DIAS[nd.getDay()]} ${nd.getDate()} de ${MESL[nd.getMonth()]}</div>
     <h1 class="couple">Temporada ${nd.getFullYear()}–${nd.getFullYear()+1}</h1>
-    <div class="meta"><span>${ws.length} bodas activas</span><span>${sum(ws,w=>w.guests.length)} invitados en total</span>${ls.length?`<span><button class="linkbtn" data-a="leads">${ls.length} consultas sin cerrar</button></span>`:''}</div>
+    <div class="meta"><span class="meta-lead">Hoy, ${DIAS[nd.getDay()]} ${nd.getDate()} de ${MESL[nd.getMonth()]}</span><span>${ws.length} bodas activas</span><span>${sum(ws,w=>w.guests.length)} invitados en total</span>${ls.length?`<span><button class="linkbtn" data-a="leads">${ls.length} consultas sin cerrar</button></span>`:''}</div>
   </div>
   <div class="row"><button class="btn" data-a="new-lead">+ Consulta</button><button class="btn pri" data-a="new-wedding">+ Nueva boda</button></div></div>`;
   if(!ws.length) return head+`<div class="panel"><div class="empty">No hay bodas en curso. Creá una nueva o convertí una consulta en boda.</div></div>`;
@@ -475,7 +561,6 @@ function negocio(){
   const mesLabel=k=>{const [y,m]=k.split('-');return `${MES[+m-1]} ${y.slice(2)}`};
   const cartera=[['En curso',active().length,'ok'],['Consultas',ls.length,'acc'],['Finalizadas',archived().length,'plain']];
   return `<div class="head"><div>
-      <div class="eyebrow">El negocio</div>
       <h1 class="couple">Números del estudio</h1>
       <div class="meta"><span>${ws.length} bodas contratadas</span><span>${ls.length} consultas abiertas</span></div>
     </div></div>
@@ -523,7 +608,6 @@ function leadsView(){
   const ls=leads().slice().sort((a,b)=>b.lead.first.localeCompare(a.lead.first));
   const pot=sum(ls,w=>fees(w).fee);
   return `<div class="head"><div>
-    <div class="eyebrow">Consultas</div>
     <h1 class="couple">Parejas por confirmar</h1>
     <div class="meta"><span>${ls.length} consultas abiertas</span><span>${moneyK(pot)} en honorarios potenciales</span></div>
   </div><button class="btn pri" data-a="new-lead">+ Nueva consulta</button></div>
@@ -556,17 +640,16 @@ function wedding(){
       <button class="${ui.view==='planner'?'on':''}" data-a="view" data-v="planner">Vista planner</button>
       <button class="${ui.view==='portal'?'on':''}" data-a="view" data-v="portal">Portal novios</button>
     </div>`;
-  if(ui.view==='portal') return `<div class="head" style="align-items:center"><div class="eyebrow">Portal de novios · acceso de ${esc(w.couple)}</div>${seg}</div>`+portal(w,s);
-  const eyebrow=w.status==='lead'?'Consulta · todavía no es una boda'
+  if(ui.view==='portal') return (isCouple()?'':`<div class="head portal-head"><p class="portal-note">Así ven ${esc(w.couple)} su boda: sólo lo que les toca decidir o hacer. Vos seguís gestionando todo desde la vista planner.</p>${seg}</div>`)+portal(w,s);
+  const lead=w.status==='lead'?'Consulta · todavía no es una boda'
     :w.status==='finalizada'?'Boda finalizada'
     :s.days<0?`Fue hace ${-s.days} días`:`Boda · faltan ${s.days} días`;
   const acts=w.status==='lead'?`<button class="btn pri" data-a="convert" data-id="${w.id}">Convertir en boda</button>`
     :w.status==='activa'&&s.days<=0?`<button class="btn" data-a="close-wedding" data-id="${w.id}">Cerrar y archivar</button>`
     :w.status==='finalizada'?`<button class="btn" data-a="reopen" data-id="${w.id}">Reabrir</button>`:'';
   const header=`<div class="head"><div>
-      <div class="eyebrow">${eyebrow}</div>
       <h1 class="couple">${coupleHTML(w.couple)}</h1>
-      <div class="meta"><span>${fLong(w.date)}</span><span>${esc(w.venue)}, ${esc(w.city)}</span><span>${esc(w.style)}</span><span class="pill ${w.status==='lead'?'acc':w.status==='finalizada'?'ok':'plain'}">${WSTATUS[w.status]}</span></div>
+      <div class="meta"><span class="meta-lead">${lead}</span><span>${fLong(w.date)}</span><span>${esc(w.venue)}, ${esc(w.city)}</span><span>${esc(w.style)}</span><span class="pill ${w.status==='lead'?'acc':w.status==='finalizada'?'ok':'plain'}">${WSTATUS[w.status]}</span></div>
     </div><div class="row">${acts}${w.status==='lead'?'':seg}</div></div>`;
   const counts={invitados:s.pend,proveedores:s.pendAppr,checklist:s.overdue,pareja:fees(w).late};
   const tabs=w.status==='lead'?[['pareja','Ficha de la pareja'],['mensajes','Mensajes']]:TABS;
@@ -585,10 +668,10 @@ function resumen(w,s){
     ${kpi('Checklist',`${s.tasksDone}<small> / ${w.tasks.length}</small>`,s.overdue?`<span style="color:var(--bad)">${s.overdue} vencidas</span>`:'Sin vencidas',pct(s.tasksDone,w.tasks.length))}
   </div>
   <div class="grid g2">
-    <div class="panel"><h3>Próximas tareas <button class="btn sm ghost" data-a="tab" data-t="checklist">Ver checklist →</button></h3>
+    <div class="panel"><h3>Próximas tareas <button class="btn sm ghost" data-a="tab" data-t="checklist">Ver checklist ${ic('right')}</button></h3>
       <div class="list">${next.map(t=>taskLi(t)).join('')||'<div class="empty">Checklist completo.</div>'}</div></div>
     <div class="grid" style="align-content:start">
-      <div class="panel"><h3>Saldos pendientes <button class="btn sm ghost" data-a="tab" data-t="presupuesto">Presupuesto →</button></h3>
+      <div class="panel"><h3>Saldos pendientes <button class="btn sm ghost" data-a="tab" data-t="presupuesto">Presupuesto ${ic('right')}</button></h3>
         <div class="list">${pays.map(e=>`<div class="li">${dateTile(e.due)}<div><div class="t">${esc(e.concept)}</div><div class="sub">${esc(e.cat)} · pagado ${pct(e.paid,e.total)}%</div></div><span class="num">${money(e.total-e.paid)}</span></div>`).join('')||'<div class="empty">Todo pagado.</div>'}</div></div>
       <div class="panel"><h3>Proveedores</h3>
         <div class="chips">${VSTAT.map(st=>{const n=w.vendors.filter(v=>v.status===st).length;return `<span class="pill ${st==='confirmado'?'ok':st==='presupuestado'?'warn':st==='contactado'?'':'acc'}">${VLABEL[st]} · ${n}</span>`}).join('')}</div></div>
@@ -609,7 +692,7 @@ function pareja(w){
     <div class="row" style="gap:6px">
       ${m.done?'<span class="pill ok">Hecha</span>':d<0?`<span class="pill bad">Pasó hace ${-d} d</span>`:`<span class="pill ${d<=7?'warn':''}">${d===0?'Hoy':'En '+d+' d'}</span>`}
       ${m.done?'':`<button class="btn sm" data-a="meet-done" data-id="${m.id}">Listo</button>`}
-      <button class="btn sm ghost" data-a="del-meet" data-id="${m.id}" aria-label="Quitar reunión">×</button>
+      <button class="btn sm ghost" data-a="del-meet" data-id="${m.id}" aria-label="Quitar reunión">${ic('x')}</button>
     </div></div>`};
 
   return `<div class="grid g2" style="margin-bottom:16px">
@@ -667,15 +750,15 @@ function pareja(w){
     </div>
     <div class="panel"><h3>Documentos <button class="btn sm pri" data-a="add-doc">+ Documento</button></h3>
       <div class="list">${w.docs.map(d=>`<div class="li" style="grid-template-columns:auto 1fr auto">${dateTile(d.date)}
-        <div><div class="t"><a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.name)}</a></div><div class="sub">${esc(d.kind)}</div></div>
-        <button class="btn sm ghost" data-a="del-doc" data-id="${d.id}" aria-label="Quitar documento">×</button></div>`).join('')
+        <div><div class="t">${safeUrl(d.url)?`<a href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener">${esc(d.name)}</a>`:`${esc(d.name)} <span class="muted">(link inválido)</span>`}</div><div class="sub">${esc(d.kind)}</div></div>
+        <button class="btn sm ghost" data-a="del-doc" data-id="${d.id}" aria-label="Quitar documento">${ic('x')}</button></div>`).join('')
         ||'<div class="empty">Sin documentos. Guardá acá el link al contrato firmado, el plano del salón o el moodboard.</div>'}</div>
       <p class="muted" style="font-size:12px;margin:12px 0 0">Se guardan links, no archivos: el sistema todavía no tiene dónde alojarlos.</p>
     </div>
     <div class="panel"><h3>Bitácora <button class="btn sm pri" data-a="add-log">+ Nota</button></h3>
       <div class="list">${log.map(l=>`<div class="li" style="align-items:start">${dateTile(l.date)}
         <div><div class="t">${esc(l.title)}</div><div class="sub" style="margin-bottom:4px">${esc(l.kind)}</div><div class="lbody">${esc(l.body)}</div></div>
-        <button class="btn sm ghost" data-a="del-log" data-id="${l.id}" aria-label="Borrar nota">×</button></div>`).join('')
+        <button class="btn sm ghost" data-a="del-log" data-id="${l.id}" aria-label="Borrar nota">${ic('x')}</button></div>`).join('')
         ||'<div class="empty">Todavía no registraste nada. Anotá acá cada llamada, reunión o pedido de los novios.</div>'}</div>
     </div>
   </div>`;
@@ -701,7 +784,7 @@ function invitados(w,s){
       <td><select class="tsel rsvp-sel" data-c="rsvp" data-id="${g.id}" aria-label="RSVP de ${esc(g.name)}" style="color:var(--${g.rsvp==='si'?'ok':g.rsvp==='no'?'bad':'warn'})">${Object.entries(RSVP).map(([k,l])=>`<option value="${k}" ${g.rsvp===k?'selected':''}>${l}</option>`).join('')}</select></td>
       <td>${g.diet?`<span class="pill acc plain">${g.diet}</span>`:'<span class="muted">Estándar</span>'}</td>
       <td>${g.rsvp==='si'?`<select class="tsel" data-c="table" data-id="${g.id}" aria-label="Mesa de ${esc(g.name)}"><option value="">Sin mesa</option>${Array.from({length:w.tables},(_,i)=>`<option value="${i+1}" ${g.table===i+1?'selected':''}>Mesa ${i+1}</option>`).join('')}</select>`:'<span class="muted">—</span>'}</td>
-      <td class="r"><button class="btn sm ghost" data-a="del-guest" data-id="${g.id}" aria-label="Quitar a ${esc(g.name)}">Quitar</button></td>
+      <td class="r nowrap">${g.plusOf?'':`<button class="btn sm ghost" data-a="copy-glink" data-id="${g.id}" aria-label="Copiar el link personal de ${esc(g.name)}">Copiar link</button>`}<button class="btn sm ghost" data-a="del-guest" data-id="${g.id}" aria-label="Quitar a ${esc(g.name)}">Quitar</button></td>
     </tr>`).join('')||`<tr><td colspan="7"><div class="empty">Ningún invitado coincide con la búsqueda.</div></td></tr>`}</tbody>
   </table></div>
   <p class="muted" style="font-size:12px;margin-top:10px">${list.length} de ${s.inv} invitados · ${s.diet} confirmados con menú especial</p>`;
@@ -722,7 +805,7 @@ function mesas(w,s){
   <div class="tables">${tables.map(t=>`<div class="mesa">
     <div class="mh"><button class="linkbtn tn" data-a="edit-mesa" data-n="${t.n}">${esc(t.name)}</button><span class="num muted" style="font-size:12px">${t.gs.length}/${t.seats}</span></div>
     <div class="seats ${t.gs.length>t.seats?'over':''}">${Array.from({length:t.seats},(_,i)=>`<i class="${i<t.gs.length?'f':''}"></i>`).join('')}</div>
-    <ul>${t.gs.map(g=>`<li><span>${esc(g.name)}${g.diet?` <span class="muted">· ${g.diet[0]}</span>`:''}</span><button data-a="unseat" data-id="${g.id}" aria-label="Sacar de la mesa">×</button></li>`).join('')||'<li class="muted">Mesa libre</li>'}</ul>
+    <ul>${t.gs.map(g=>`<li><span>${esc(g.name)}${g.diet?` <span class="muted">· ${g.diet[0]}</span>`:''}</span><button data-a="unseat" data-id="${g.id}" aria-label="Sacar a ${esc(g.name)} de la mesa">${ic('x')}</button></li>`).join('')||'<li class="muted">Mesa libre</li>'}</ul>
   </div>`).join('')}</div>`;
 }
 
@@ -749,7 +832,7 @@ function presupuesto(w,s){
         <thead><tr><th>Concepto</th><th class="r">Total</th><th class="r">Pagado</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
         <tbody>${w.expenses.slice().sort((a,b)=>(a.paid>=a.total)-(b.paid>=b.total)||a.due.localeCompare(b.due)).map(e=>{
           const done=e.paid>=e.total,d=daysUntil(e.due),pl=planDe(e),open=ui.expOpen===e.id;return `<tr>
-          <td><button class="linkbtn tw" data-a="exp-toggle" data-id="${e.id}">${open?'▾':'▸'} <b>${esc(e.concept)}</b></button><div class="muted" style="font-size:12px;padding-left:16px">${esc(e.cat)}${pl?` · ${pl.filter(c=>c.paid).length}/${pl.length} cuotas`:''}</div></td>
+          <td><button class="linkbtn tw" data-a="exp-toggle" data-id="${e.id}" aria-expanded="${open}">${ic('chev',open?'open':'')}<b>${esc(e.concept)}</b></button><div class="muted" style="font-size:12px;padding-left:16px">${esc(e.cat)}${pl?` · ${pl.filter(c=>c.paid).length}/${pl.length} cuotas`:''}</div></td>
           <td class="r num">${money(e.total)}</td><td class="r num">${money(e.paid)}</td>
           <td class="num" style="font-size:12.5px">${fDate(e.due)}</td>
           <td>${done?'<span class="pill ok">Pagado</span>':e.paid>0?`<span class="pill ${d<=15?'warn':'acc'}">Pagado ${pct(e.paid,e.total)}%</span>`:`<span class="pill ${d<=15?'bad':''}">Sin pagar</span>`}</td>
@@ -775,9 +858,9 @@ function proveedores(w){
       <div class="vm">${money(v.amount)}</div>
       <div class="vp">${esc(v.contact)} · <span class="num" style="user-select:all">${esc(v.phone)}</span></div>
       ${e?`<div class="bar" style="margin-top:2px"><i style="width:${pct(e.paid,e.total)}%"></i></div>`:''}
-      <div class="act"><button class="btn sm ghost" data-a="vmove" data-id="${v.id}" data-d="-1" ${i===0?'disabled style="visibility:hidden"':''} aria-label="Etapa anterior">←</button>
+      <div class="act"><button class="btn sm ghost" data-a="vmove" data-id="${v.id}" data-d="-1" ${i===0?'disabled style="visibility:hidden"':''} aria-label="Pasar ${esc(v.name)} a la etapa anterior">${ic('left')}</button>
       ${st==='presupuestado'?'<span class="pill warn" style="align-self:center">Espera novios</span>':''}
-      <button class="btn sm" data-a="vmove" data-id="${v.id}" data-d="1" ${i===4?'disabled style="visibility:hidden"':''} aria-label="Etapa siguiente">→</button></div>
+      <button class="btn sm" data-a="vmove" data-id="${v.id}" data-d="1" ${i===4?'disabled style="visibility:hidden"':''} aria-label="Pasar ${esc(v.name)} a la etapa siguiente">${ic('right')}</button></div>
     </div>`}).join('')||'<div class="muted" style="font-size:12px;padding:6px">Vacío</div>'}
   </section>`}).join('')}</div>`;
 }
@@ -801,7 +884,7 @@ function dia(w){
   <div class="panel"><h3>Cronograma del día <span class="row" style="gap:6px"><button class="btn sm" data-a="print">Imprimir</button><button class="btn sm pri" data-a="add-tl">+ Momento</button></span></h3>
     <div class="tl">${tl.map(x=>`<div class="tli ${x.key?'key':''}"><div class="h">${esc(x.time)}</div><div class="dot"></div>
       <div class="body"><b>${esc(x.title)}</b><div>${esc(x.place)} · ${esc(x.who)}</div></div>
-      <div class="x"><button class="btn sm ghost" data-a="del-tl" data-id="${x.id}" aria-label="Quitar momento">×</button></div></div>`).join('')}</div></div>
+      <div class="x"><button class="btn sm ghost" data-a="del-tl" data-id="${x.id}" aria-label="Quitar momento">${ic('x')}</button></div></div>`).join('')}</div></div>
   <div class="grid" style="align-content:start">
     <div class="panel"><h3>Contactos del día</h3><div class="list">${w.vendors.filter(v=>['senado','confirmado'].includes(v.status)).map(v=>`<div class="li" style="grid-template-columns:1fr auto"><div><div class="t">${esc(v.name)}</div><div class="sub">${esc(v.cat)} · ${esc(v.contact)}</div></div><span class="num" style="font-size:12px;user-select:all">${esc(v.phone)}</span></div>`).join('')||'<div class="empty">Todavía no hay proveedores señados.</div>'}</div></div>
     <div class="panel"><h3>Para catering</h3>
@@ -822,9 +905,7 @@ function portal(w,s){
   const C=2*Math.PI*58;
   const appr=w.vendors.filter(v=>v.status==='presupuestado');
   const mine=w.tasks.filter(t=>t.owner==='novios').sort((a,b)=>(a.done-b.done)||a.due.localeCompare(b.due));
-  return `<div class="portal-note">Así ven los novios su boda: solo lo que les toca decidir o hacer. La planner sigue gestionando todo desde la vista planner.</div>
-  <section class="hero"><div style="position:relative;z-index:1">
-    <div class="eyebrow">Nuestra boda</div>
+  return `<section class="hero"><div class="hero-body">
     <h1 class="couple">${coupleHTML(w.couple)}</h1>
     <div class="meta"><span>${fLong(w.date)}</span><span>${esc(w.venue)}, ${esc(w.city)}</span></div>
     <div class="row" style="margin-top:14px;flex-wrap:wrap"><span class="pill acc">Organización ${prog}% lista</span>${appr.length?`<span class="pill warn">${appr.length} presupuesto${appr.length>1?'s':''} para aprobar</span>`:''}</div>
@@ -891,7 +972,7 @@ const TPL=[
 const tplFor=w=>TPL.filter(t=>t.when===w.status);
 
 function audience(w,t){
-  const g2r=g=>({id:g.id,name:g.name,phone:g.phone,email:'',sub:g.group+(g.phone?'':' · sin teléfono')});
+  const g2r=g=>({id:g.id,name:g.name,phone:g.phone,email:'',token:g.token,sub:g.group+(g.phone?'':' · sin teléfono')});
   if(t.aud==='pend')return w.guests.filter(g=>g.rsvp==='pendiente'&&!g.plusOf).map(g2r);
   if(t.aud==='todos')return w.guests.filter(g=>!g.plusOf).map(g2r);
   if(t.aud==='si')return w.guests.filter(g=>g.rsvp==='si'&&!g.plusOf).map(g2r);
@@ -911,7 +992,7 @@ function rutaDe(w,cat){
 function msgVars(w,r,t){
   const f=fees(w), nx=f.next, mt=w.meetings.filter(m=>!m.done).sort((a,b)=>a.date.localeCompare(b.date))[0];
   return {nombre:firstName(r.name),novios:w.couple,fecha:fLong(w.date),lugar:`${w.venue}, ${w.city}`,
-    link:rsvpLink(w),hora:(w.timeline.find(x=>/ceremonia/i.test(x.title))||{}).time||'',
+    link:rsvpLink(w,(r&&r.token)?r:null),hora:(w.timeline.find(x=>/ceremonia/i.test(x.title))||{}).time||'',
     cuota:nx?nx.label:'—',monto:nx?money(nx.amount):'—',vence:nx?fLong(nx.due):'—',
     reunion:mt?`${mt.title}, ${fLong(mt.date)} a las ${mt.time} en ${mt.place||'a confirmar'}`:'a coordinar',
     ruta:t.id==='ruta'?rutaDe(w,r.sub):''};
@@ -973,15 +1054,15 @@ const BOT=[
  {id:'donde',q:'¿Dónde es?',loose:1,k:'donde lugar direccion dirección llegar llego ubicacion ubicación mapa',
   a:w=>`Es en ${w.venue}, ${w.city}. Te dejo el mapa: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(w.venue+', '+w.city)}`},
  {id:'ropa',q:'¿Cómo me visto?',k:'vestimenta vestir visto ropa codigo código pongo traje vestido etiqueta formal zapatos',
-  a:w=>w.profile.faq.dress||(w.profile.palette?`El estilo es ${w.style.toLowerCase()}, con paleta ${w.profile.palette.toLowerCase()}.`:'Todavía no definieron código de vestimenta.')},
+  a:w=>(w.profile.faq||{}).dress||(w.profile.palette?`El estilo es ${String(w.style||'').toLowerCase()}, con paleta ${w.profile.palette.toLowerCase()}.`:'Todavía no definieron código de vestimenta.')},
  {id:'regalo',q:'¿Qué les regalo?',k:'regalo regalos lista alias transferencia plata sobre',
-  a:w=>w.profile.faq.gifts||'Sobre los regalos todavía no me dijeron nada. Preguntales directamente.'},
+  a:w=>(w.profile.faq||{}).gifts||'Sobre los regalos todavía no me dijeron nada. Preguntales directamente.'},
  {id:'ninos',q:'¿Puedo llevar a los chicos?',k:'niño niños nino ninos chicos hijos bebe bebé menores nenes familia',
-  a:w=>w.profile.faq.kids||'No tengo confirmado si la fiesta admite chicos. Consultalo con los novios.'},
+  a:w=>(w.profile.faq||{}).kids||'No tengo confirmado si la fiesta admite chicos. Consultalo con los novios.'},
  {id:'hotel',q:'¿Dónde puedo alojarme?',k:'hotel alojamiento alojo alojarme dormir hospedaje cabaña cabana quedarme noche',
-  a:w=>w.profile.faq.lodging||'Todavía no hay alojamiento reservado para invitados.'},
+  a:w=>(w.profile.faq||{}).lodging||'Todavía no hay alojamiento reservado para invitados.'},
  {id:'traslado',q:'¿Cómo vuelvo?',k:'micro traslado transporte colectivo estacionamiento auto remis taxi volver vuelvo vuelta',
-  a:w=>w.profile.faq.transport||w.profile.faq.extra||'Todavía no hay traslados organizados. Si se suma un micro, te aviso.'},
+  a:w=>(w.profile.faq||{}).transport||(w.profile.faq||{}).extra||'Todavía no hay traslados organizados. Si se suma un micro, te aviso.'},
  {id:'menu',q:'Tengo una restricción alimentaria',k:'menu menú comida comer vegetariano vegano celiaco celíaco dieta tacc alergia alergico',
   a:()=> 'Marcalo en el formulario de arriba, en "¿Comés algo especial?". Hay opción vegetariana, vegana y sin TACC, y llega directo al catering.'},
  {id:'acomp',q:'¿Puedo ir con alguien?',k:'acompañante acompanante pareja novio novia llevar alguien invitado extra mas uno',
@@ -1004,37 +1085,104 @@ function botAnswer(w,q){
   return best.a(w);
 }
 
+/* El RSVP lee de dos lados: la boda local (demo) o la API pública, cuando hay
+   backend. La API nunca entrega la lista de invitados: con el link personal
+   llega directo el invitado; con el general, se busca por nombre. */
+const DIET_OPTS=[['','Como de todo'],'Vegetariano','Vegano','Celíaco'];
+function rsvpWedding(){return ui.rsvp==='remote'?(ui.pub&&ui.pub.w):S.weddings.find(x=>x.id===ui.rsvp)}
+function rsvpGuest(w){
+  if(!ui.rsvpGuest||!w)return null;
+  if(ui.rsvp==='remote')return ui.pub.guest&&ui.pub.guest.id===ui.rsvpGuest?ui.pub.guest:null;
+  const g=w.guests.find(x=>x.id===ui.rsvpGuest);if(!g)return null;
+  const a=w.guests.find(x=>x.plusOf===g.id);
+  return {id:g.id,name:g.name,rsvp:g.rsvp,diet:g.diet||'',plus:!!g.plus,companion:a?a.name:''};
+}
+const rsvpMin=()=>ui.rsvp==='remote'?3:2;
+function rsvpHits(w,q){
+  if(ui.rsvp==='remote')return (ui.pub.hits&&ui.pub.hitsFor===q)?ui.pub.hits:null;
+  return w.guests.filter(x=>!x.plusOf&&norm(x.name).includes(q)).slice(0,6).map(x=>({id:x.id,name:x.name,rsvp:x.rsvp,plus:x.plus}));
+}
+async function loadPublic(){
+  const p=ui.pub;
+  try{
+    const r=await window.Alianza.publicGet(p.key);
+    if(ui.pub!==p)return;
+    p.w=r.wedding;p.loading=false;
+    if(r.guest){p.guest=r.guest;ui.rsvpGuest=r.guest.id;ui.rsvpByToken=true;ui.rsvpDone=r.guest.rsvp!=='pendiente'}
+  }catch(e){if(ui.pub!==p)return;p.loading=false;p.error=e.status===404?'missing':e.message}
+  render();
+}
+let searchT=null;
+function searchPublic(q){
+  clearTimeout(searchT);
+  const p=ui.pub;if(!p||q.length<3)return;
+  p.searching=true;
+  searchT=setTimeout(async()=>{
+    try{const r=await window.Alianza.publicSearch(p.key,q);if(ui.pub!==p)return;p.hits=r.guests;p.hitsFor=q}
+    catch(e){if(ui.pub!==p)return;p.hits=[];p.hitsFor=q;toast(e.status===0?'Sin conexión. Probá de nuevo en un momento.':e.message)}
+    p.searching=false;
+    if(norm(ui.rsvpQuery.trim())===q){ui.focus='rq';render()}
+  },260);
+}
+async function sendRsvp(){
+  const w=rsvpWedding(),g=rsvpGuest(w),root=document.querySelector('[data-form]');if(!g||!root)return;
+  const rsvp=root.querySelector('input[name="att"]:checked').value, diet=root.querySelector('#rdiet').value;
+  const ac=root.querySelector('#racomp'), name=ac?ac.value.trim():'';
+  if(ui.rsvp==='remote'){
+    ui.pub.sending=true;render();
+    try{
+      const r=await window.Alianza.publicConfirm(ui.pub.key,{guestId:g.id,rsvp,diet,companion:name});
+      ui.pub.guest=r.guest;ui.rsvpGuest=r.guest.id;ui.rsvpDone=true;
+    }catch(e){toast(e.status===0?'No pudimos enviar tu respuesta: no hay conexión. Probá de nuevo.':e.message)}
+    ui.pub.sending=false;render();return;
+  }
+  const lg=w.guests.find(x=>x.id===g.id);
+  lg.rsvp=rsvp;lg.diet=diet;if(rsvp!=='si')lg.table=null;
+  const prev=w.guests.find(x=>x.plusOf===lg.id);
+  if(rsvp==='si'&&name&&lg.plus){
+    if(prev)prev.name=name;
+    else w.guests.push({id:uid(),name,side:lg.side,group:lg.group,rsvp:'si',diet:'',table:null,kind:'adulto',plus:false,plusOf:lg.id,phone:'',token:tok()});
+  }else if(prev)w.guests=w.guests.filter(x=>x.id!==prev.id);
+  ui.rsvpDone=true;save();render();
+}
+
 function rsvpPage(){
-  const w=S.weddings.find(x=>x.id===ui.rsvp);
-  if(!w)return `<div class="rsvp"><div class="empty">Este link de confirmación no existe.</div></div>`;
-  const d=daysUntil(w.date);
-  const head=`<header class="rsvp-head">
+  const p=ui.pub||{};
+  const shell=inner=>`<div class="rsvp">${inner}</div>`;
+  if(ui.rsvp==='remote'&&p.loading)return shell(`<div class="rsvp-wait" role="status"><span class="spin" aria-hidden="true"></span>Abriendo la invitación…</div>`);
+  const w=rsvpWedding();
+  if(ui.rsvp==='missing'||!w||p.error)return shell(`<section class="rsvp-card"><h2>No encontramos esta invitación</h2>
+    <p class="lead-p">${p.error&&p.error!=='missing'?esc(p.error):'El link está incompleto o ya no existe. Pedile a los novios que te lo vuelvan a mandar.'}</p></section>`);
+  const remote=ui.rsvp==='remote', d=daysUntil(w.date);
+  const opening=!ui.rsvpOpened;ui.rsvpOpened=true;
+  const head=`<header class="rsvp-head ${opening?'opening':''}">
+    <svg class="rsvp-rings" viewBox="0 0 120 60" aria-hidden="true"><circle class="r1" cx="47" cy="30" r="22"/><circle class="r2" cx="73" cy="30" r="22"/><path class="r1-front" d="M60 12.25A22 22 0 0 1 69 30"/></svg>
     <h1 class="couple">${coupleHTML(w.couple)}</h1>
     <p class="when">${fLong(w.date)}</p>
     <p class="where">${esc(w.venue)} · ${esc(w.city)}</p>
     ${d>0?`<p class="cd"><b class="num">${d}</b><span>${d===1?'día':'días'} para el sí</span></p>`:d===0?'<p class="cd"><span>Es hoy</span></p>':''}
   </header>`;
-  const foot=`<footer class="rsvp-foot">Invitación gestionada con <b>Alianza Wedding Studio</b> · <a href="#" data-a="rsvp-exit">volver al sistema</a></footer>`;
+  const back=!remote||(window.Alianza&&window.Alianza.user);
+  const foot=`<footer class="rsvp-foot">Invitación gestionada con <b>Alianza Wedding Studio</b>${back?` · <a href="#" data-a="rsvp-exit">volver al sistema</a>`:''}</footer>`;
   const sugeridas=BOT.filter(b=>!ui.botLog.some(x=>x.id===b.id)).slice(0,4);
-  const bot=`<section class="bot">
-    <h3>¿Tenés una duda?</h3>
-    ${ui.botLog.length?`<div class="botlog">${ui.botLog.map(x=>`
+  const bot=`<section class="bot" aria-labelledby="bot_t">
+    <h3 id="bot_t">¿Tenés una duda?</h3>
+    ${ui.botLog.length?`<div class="botlog" aria-live="polite">${ui.botLog.map(x=>`
       <p class="bq">${esc(x.q)}</p>
       <p class="ba">${esc(x.a).replace(/(https?:\/\/\S+)/g,'<a href="$1" target="_blank" rel="noopener">ver mapa</a>')}</p>`).join('')}</div>`:''}
     <div class="chips">${sugeridas.map(b=>`<button class="chip" data-a="bot-ask" data-q="${esc(b.q)}" data-id="${b.id}">${esc(b.q)}</button>`).join('')}</div>
-    <div class="botbar">
+    <form class="botbar" data-bot>
+      <label class="sr" for="botq">Tu pregunta</label>
       <input class="input" id="botq" placeholder="Escribí tu pregunta" autocomplete="off">
-      <button class="btn" data-a="bot-send">Preguntar</button>
-    </div>
+      <button class="btn">Preguntar</button>
+    </form>
     <p class="botnote">Respuestas automáticas, armadas con lo que cargó la organizadora. Si algo no figura, te lo va a decir.</p>
   </section>`;
-  const wrap=inner=>`<div class="rsvp">${head}${inner}${bot}${foot}</div>`;
+  const wrap=inner=>shell(`${head}${inner}${bot}${foot}`);
 
-  const g=ui.rsvpGuest?w.guests.find(x=>x.id===ui.rsvpGuest):null;
-
+  const g=rsvpGuest(w);
   if(g&&ui.rsvpDone){
-    const acomp=w.guests.find(x=>x.plusOf===g.id);
-    return wrap(`<section class="rsvp-card done">
+    return wrap(`<section class="rsvp-card done" aria-live="polite">
       <h2>${g.rsvp==='si'?'¡Nos vemos ahí!':'Gracias por avisar'}</h2>
       <p class="lead-p">${g.rsvp==='si'
         ?`Guardamos tu lugar, ${esc(firstName(g.name))}. Te esperamos el ${fLong(w.date)} en ${esc(w.venue)}.`
@@ -1042,67 +1190,119 @@ function rsvpPage(){
       ${g.rsvp==='si'?`<dl class="resumen">
         <div><dt>A nombre de</dt><dd>${esc(g.name)}</dd></div>
         <div><dt>Menú</dt><dd>${esc(g.diet||'Estándar')}</dd></div>
-        ${acomp?`<div><dt>Te acompaña</dt><dd>${esc(acomp.name)}</dd></div>`:''}
+        ${g.companion?`<div><dt>Te acompaña</dt><dd>${esc(g.companion)}</dd></div>`:''}
       </dl>`:''}
       <button class="btn" data-a="rsvp-edit">Cambiar mi respuesta</button>
     </section>`);
   }
 
   if(g){
-    const acomp=w.guests.find(x=>x.plusOf===g.id);
+    const sending=remote&&p.sending;
     return wrap(`<section class="rsvp-card" data-form>
-      <button class="linkbtn back" data-a="rsvp-back">← No soy ${esc(firstName(g.name))}</button>
+      ${ui.rsvpByToken?'':`<button class="linkbtn back" data-a="rsvp-back">${ic('left')} No soy ${esc(firstName(g.name))}</button>`}
       <h2>Hola, ${esc(firstName(g.name))}</h2>
       <p class="lead-p">Contanos si vas a poder acompañarnos. Podés cambiar la respuesta cuando quieras.</p>
-      <div class="opts">
+      <fieldset class="opts"><legend class="sr">¿Venís?</legend>
         <label class="opt"><input type="radio" name="att" value="si" ${g.rsvp!=='no'?'checked':''}><span class="ot">Sí, voy</span><span class="os">Cuenten conmigo</span></label>
         <label class="opt"><input type="radio" name="att" value="no" ${g.rsvp==='no'?'checked':''}><span class="ot">No puedo</span><span class="os">Esta vez no llego</span></label>
-      </div>
+      </fieldset>
       <div class="field"><label for="rdiet">¿Comés algo especial?</label>
-        <select class="select" id="rdiet">${[['','Como de todo'],'Vegetariano','Vegano','Celíaco'].map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];return `<option value="${esc(v)}" ${g.diet===v?'selected':''}>${esc(l)}</option>`}).join('')}</select></div>
+        <select class="select" id="rdiet">${DIET_OPTS.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];return `<option value="${esc(v)}" ${g.diet===v?'selected':''}>${esc(l)}</option>`}).join('')}</select></div>
       ${g.plus?`<div class="field"><label for="racomp">¿Venís con alguien? <span class="muted">(opcional)</span></label>
-        <input class="input" id="racomp" value="${esc(acomp?acomp.name:'')}" placeholder="Nombre y apellido de tu acompañante"></div>`:''}
-      <button class="btn pri big" data-a="rsvp-send">Enviar mi respuesta</button>
+        <input class="input" id="racomp" value="${esc(g.companion||'')}" placeholder="Nombre y apellido de tu acompañante" autocomplete="off"></div>`:''}
+      <button class="btn pri big" data-a="rsvp-send" ${sending?'disabled aria-busy="true"':''}>${sending?'<span class="spin" aria-hidden="true"></span>Enviando…':'Enviar mi respuesta'}</button>
     </section>`);
   }
 
-  const q=norm(ui.rsvpQuery.trim());
-  const hits=q.length<2?[]:w.guests.filter(x=>!x.plusOf&&norm(x.name).includes(q)).slice(0,6);
+  const q=norm(ui.rsvpQuery.trim()), min=rsvpMin(), hits=q.length<min?[]:rsvpHits(w,q);
+  const hasGuests=remote?w.hasGuests:w.guests.length>0;
   return wrap(`<section class="rsvp-card">
     <h2>Confirmá tu asistencia</h2>
     <p class="lead-p">Buscá tu nombre en la lista de invitados para responder.</p>
     <div class="field"><label for="rq">Tu nombre</label>
-      <input class="input big" id="rq" data-c="rq" value="${esc(ui.rsvpQuery)}" placeholder="Empezá a escribir tu nombre" autocomplete="off"></div>
-    ${!w.guests.length?'<div class="empty">La lista de invitados todavía no está cargada. Escribile a los novios.</div>'
-      :q.length<2?'<p class="hint">Escribí al menos dos letras.</p>'
+      <input class="input big" id="rq" data-c="rq" value="${esc(ui.rsvpQuery)}" placeholder="Empezá a escribir tu nombre o apellido" autocomplete="off"></div>
+    <div aria-live="polite">${!hasGuests?'<div class="empty">La lista de invitados todavía no está cargada. Escribile a los novios.</div>'
+      :q.length<min?`<p class="hint">Escribí al menos ${min===3?'tres':'dos'} letras.</p>`
+      :hits===null?'<p class="hint"><span class="spin" aria-hidden="true"></span>Buscando…</p>'
       :hits.length?`<div class="matches">${hits.map(x=>`<button class="match" data-a="rsvp-pick" data-id="${x.id}">
           <span class="mn">${esc(x.name)}</span>
           <span class="ms">${x.rsvp==='pendiente'?'Sin responder':x.rsvp==='si'?'Ya confirmaste':'Respondiste que no venís'}</span>
         </button>`).join('')}</div>`
-      :`<p class="hint">No encontramos a nadie con ese nombre. Probá con tu apellido o escribile a los novios.</p>`}
+      :`<p class="hint">No encontramos a nadie con ese nombre. Probá con tu apellido o escribile a los novios.</p>`}</div>
   </section>`);
 }
 
 /* ================= modal / toast ================= */
-function form(title,fields,onOk,okLabel='Guardar'){
+/* modal accesible: foco atrapado adentro, Escape cierra y el foco vuelve a
+   quien lo abrió. Un campo puede traer check(valor) → mensaje de error. */
+function modalShell(html,labelId){
+  const opener=document.activeElement;
   const ov=document.createElement('div');ov.className='overlay';
-  ov.innerHTML=`<form class="modal" novalidate><h2>${title}</h2>${fields.map(f=>`<div class="field"><label for="f_${f.id}">${f.label}</label>${
+  ov.innerHTML=html;
+  const box=ov.firstElementChild;
+  box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-labelledby',labelId);
+  document.body.appendChild(ov);
+  let closed=false;
+  const close=()=>{if(closed)return;closed=true;ov.classList.add('closing');
+    setTimeout(()=>ov.remove(),160);if(opener&&opener.isConnected)opener.focus()};
+  ov.addEventListener('click',e=>{if(e.target===ov||e.target.closest('[data-x]'))close()});
+  ov.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){e.preventDefault();close()}
+    if(e.key==='Tab'){const f=[...box.querySelectorAll('button,input,select,textarea,a[href]')].filter(x=>!x.disabled);
+      if(!f.length)return;const first=f[0],last=f[f.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+      else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}
+  });
+  return {ov,box,close};
+}
+function form(title,fields,onOk,okLabel='Guardar'){
+  const {box:fm,close}=modalShell(`<form class="modal" novalidate><h2 id="m_t">${title}</h2>${fields.map(f=>`<div class="field"><label for="f_${f.id}">${f.label}${f.req?'':' <span class="opt-l">(opcional)</span>'}</label>${
     f.type==='select'?`<select class="select" id="f_${f.id}">${f.options.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];return `<option value="${esc(v)}" ${String(f.value)===String(v)?'selected':''}>${esc(l)}</option>`}).join('')}</select>`
     :f.type==='textarea'?`<textarea class="input" id="f_${f.id}" rows="${f.rows||3}" ${f.ph?`placeholder="${esc(f.ph)}"`:''}>${esc(f.value??'')}</textarea>`
-    :`<input class="input" id="f_${f.id}" type="${f.type||'text'}" value="${esc(f.value??'')}" ${f.req?'required':''} ${f.min!=null?`min="${f.min}"`:''} ${f.ph?`placeholder="${esc(f.ph)}"`:''}>`}</div>`).join('')}
-    <div class="err" style="color:var(--bad);font-size:12.5px;min-height:1em"></div>
-    <div class="foot"><button type="button" class="btn" data-x>Cancelar</button><button class="btn pri">${okLabel}</button></div></form>`;
-  document.body.appendChild(ov);
-  const close=()=>ov.remove();
-  ov.addEventListener('click',e=>{if(e.target===ov||e.target.closest('[data-x]'))close()});
-  ov.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
-  const fm=ov.querySelector('form');
+    :`<input class="input" id="f_${f.id}" type="${f.type||'text'}" value="${esc(f.value??'')}" ${f.req?'required':''} ${f.min!=null?`min="${f.min}"`:''} ${f.ph?`placeholder="${esc(f.ph)}"`:''} ${f.type==='number'?'inputmode="numeric"':''}>`}</div>`).join('')}
+    <div class="err" role="alert"></div>
+    <div class="foot"><button type="button" class="btn" data-x>Cancelar</button><button class="btn pri">${okLabel}</button></div></form>`,'m_t');
+  const err=m=>{fm.querySelector('.err').textContent=m};
   fm.addEventListener('submit',e=>{e.preventDefault();
-    const v={};for(const f of fields){v[f.id]=fm.querySelector('#f_'+f.id).value.trim();if(f.req&&!v[f.id]){fm.querySelector('.err').textContent=`Completá "${f.label}" para guardar.`;return}}
-    const r=onOk(v);if(r===false)return;close();save();render();});
-  setTimeout(()=>fm.querySelector('input,select')?.focus(),20);
+    const v={};
+    for(const f of fields){
+      const el=fm.querySelector('#f_'+f.id);v[f.id]=el.value.trim();
+      if(f.req&&!v[f.id]){err(`Completá "${f.label}" para guardar.`);el.focus();return}
+      const m=f.check&&v[f.id]&&f.check(v[f.id]);if(m){err(m);el.focus();return}
+    }
+    const r=onOk(v);if(r===false)return;if(typeof r==='string'){err(r);return}
+    close();save();render();});
+  setTimeout(()=>fm.querySelector('input,select,textarea')?.focus(),20);
 }
-let tt;function toast(m){document.querySelector('.toast')?.remove();const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);clearTimeout(tt);tt=setTimeout(()=>t.remove(),2200)}
+/* un toast puede traer una acción ("Deshacer"); con acción dura más */
+let tt;function toast(m,action){
+  document.querySelector('.toast')?.remove();
+  const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');
+  t.innerHTML=`<span>${esc(m)}</span>${action?`<button class="toast-btn">${esc(action.label)}</button>`:''}`;
+  if(action)t.querySelector('button').addEventListener('click',()=>{t.remove();action.run()});
+  document.body.appendChild(t);clearTimeout(tt);
+  tt=setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),200)},action?6000:2400);
+}
+/* borrar sin preguntar, pero con vuelta atrás: se guarda la foto de antes */
+function undoable(msg,fn){
+  const before=JSON.stringify(S.weddings);
+  fn();
+  toast(msg,{label:'Deshacer',run:()=>{S.weddings=JSON.parse(before);
+    if(!S.weddings.some(w=>w.id===ui.wid))ui.wid=(active()[0]||S.weddings[0]||{}).id;
+    save();render();toast('Listo, quedó como estaba')}});
+}
+/* conflicto: alguien guardó esta boda desde otra sesión mientras la editabas */
+function conflictDialog(list){
+  const fw=list[0];if(!fw)return;
+  const {box,close}=modalShell(`<div class="modal"><h2 id="c_t">${esc(fw.couple)} cambió en otra sesión</h2>
+    <p class="modal-lead">Mientras editabas, se guardaron cambios de esta boda desde otro lado (otra pestaña, otro dispositivo o los novios desde su portal). No pisamos nada: elegí con qué versión seguir.</p>
+    <div class="foot"><button class="btn" data-k="mine">Quedarme con la mía</button><button class="btn pri" data-k="server">Usar la versión guardada</button></div></div>`,'c_t');
+  box.addEventListener('click',e=>{const k=e.target.closest('[data-k]');if(!k)return;
+    AL().resolve(fw,k.dataset.k);close();
+    toast(k.dataset.k==='server'?'Trajimos la versión guardada':'Guardamos tu versión encima');
+    if(list.length>1)setTimeout(()=>conflictDialog(list.slice(1)),200)});
+  setTimeout(()=>box.querySelector('[data-k="server"]').focus(),20);
+}
 
 /* ================= actions ================= */
 const find=(arr,id)=>arr.find(x=>x.id===id);
@@ -1111,29 +1311,20 @@ document.addEventListener('click',e=>{
   const a=b.dataset.a, id=b.dataset.id, w=W();
   ui.focus=null;
   switch(a){
-    case 'rsvp-exit': e.preventDefault();ui.rsvpGuest=null;ui.rsvpDone=false;ui.rsvpQuery='';ui.botLog=[];location.hash='';ui.rsvp=null;render();return;
-    case 'bot-ask': {const w2=S.weddings.find(x=>x.id===ui.rsvp);
+    case 'rsvp-exit': e.preventDefault();ui.rsvpGuest=null;ui.rsvpDone=false;ui.rsvpQuery='';ui.botLog=[];ui.pub=null;ui.rsvpByToken=false;ui.rsvpOpened=false;
+      history.pushState(null,'',location.pathname+location.search);ui.rsvp=null;
+      if(API()&&!AL().user){ui.booting=true;render();boot();return}
+      render();return;
+    case 'bot-ask': {const w2=rsvpWedding();
       ui.botLog.push({id:b.dataset.id,q:b.dataset.q,a:botAnswer(w2,b.dataset.q)});break}
-    case 'bot-send': {const el=document.getElementById('botq'), q=el?el.value.trim():'';
-      if(!q)return;
-      const w2=S.weddings.find(x=>x.id===ui.rsvp);
-      ui.botLog.push({id:'libre',q,a:botAnswer(w2,q)});break}
-    case 'rsvp-pick': ui.rsvpGuest=id;ui.rsvpDone=false;break;
-    case 'rsvp-back': ui.rsvpGuest=null;break;
+    case 'rsvp-pick': {
+      if(ui.rsvp==='remote'){const h=(ui.pub.hits||[]).find(x=>x.id===id);if(!h)return;ui.pub.guest={...h,diet:'',companion:''}}
+      ui.rsvpGuest=id;ui.rsvpDone=false;ui.rsvpByToken=false;break}
+    case 'rsvp-back': ui.rsvpGuest=null;ui.rsvpByToken=false;break;
     case 'rsvp-edit': ui.rsvpDone=false;break;
-    case 'rsvp-send': {
-      const rw=S.weddings.find(x=>x.id===ui.rsvp), g=rw.guests.find(x=>x.id===ui.rsvpGuest);
-      const root=document.querySelector('[data-form]');
-      g.rsvp=root.querySelector('input[name="att"]:checked').value;
-      g.diet=root.querySelector('#rdiet').value;
-      if(g.rsvp!=='si')g.table=null;
-      const ac=root.querySelector('#racomp'), name=ac?ac.value.trim():'';
-      const prev=rw.guests.find(x=>x.plusOf===g.id);
-      if(g.rsvp==='si'&&name){
-        if(prev)prev.name=name;
-        else rw.guests.push({id:uid(),name,side:g.side,group:g.group,rsvp:'si',diet:'',table:null,kind:'adulto',plus:false,plusOf:g.id});
-      }else if(prev)rw.guests=rw.guests.filter(x=>x.id!==prev.id);
-      ui.rsvpDone=true;break}
+    case 'rsvp-send': e.preventDefault();sendRsvp();return;
+    case 'logout': AL().logout();return;
+    case 'sync-retry': AL().retry();return;
     case 'msg-t': ui.msgT=b.dataset.t;ui.msgBody=null;break;
     case 'msg-reset': ui.msgBody=null;break;
     case 'msg-copy': {const t=tplFor(w).find(x=>x.id===(ui.msgT||tplFor(w)[0].id));
@@ -1177,10 +1368,10 @@ document.addEventListener('click',e=>{
     case 'add-doc': return form('Nuevo documento',[
       {id:'name',label:'Nombre',req:1,ph:'Ej: Contrato firmado con el salón'},
       {id:'kind',label:'Tipo',type:'select',options:['Contrato','Plano','Moodboard','Presupuesto','Factura','Otro']},
-      {id:'url',label:'Link',req:1,ph:'https://drive.google.com/…'},
+      {id:'url',label:'Link',type:'url',req:1,ph:'https://drive.google.com/…',check:u=>safeUrl(u)?'':'El link tiene que empezar con https:// (copialo desde Drive o Dropbox).'},
       {id:'date',label:'Fecha',type:'date',value:fmtISO(today0())}],
       v=>{w.docs.push({id:uid(),...v,date:v.date||fmtISO(today0())});toast('Documento guardado')});
-    case 'del-doc': w.docs=w.docs.filter(x=>x.id!==id);break;
+    case 'del-doc': {const d=find(w.docs,id);undoable(`Documento "${d.name}" quitado`,()=>{w.docs=w.docs.filter(x=>x.id!==id)});break}
     case 'studio': ui.scope='studio';ui.view='planner';break;
     case 'leads': ui.scope='leads';ui.view='planner';break;
     case 'archive': ui.showArchive=!ui.showArchive;break;
@@ -1190,22 +1381,33 @@ document.addEventListener('click',e=>{
     case 'close-wedding': {const t=S.weddings.find(x=>x.id===id);t.status='finalizada';ui.scope='studio';ui.showArchive=true;toast(`Boda de ${t.couple} archivada`);break}
     case 'reopen': {const t=S.weddings.find(x=>x.id===id);t.status='activa';toast('Boda reabierta');break}
     case 'convert': {const t=S.weddings.find(x=>x.id===id);activateLead(t);ui.scope='wedding';ui.wid=t.id;ui.tab='resumen';toast(`${t.couple} pasó a boda confirmada`);break}
-    case 'drop-lead': {const t=S.weddings.find(x=>x.id===id);S.weddings=S.weddings.filter(x=>x.id!==id);ui.scope='leads';toast(`Consulta de ${t.couple} descartada`);break}
+    case 'drop-lead': {const t=S.weddings.find(x=>x.id===id);ui.scope='leads';
+      undoable(`Consulta de ${t.couple} descartada`,()=>{S.weddings=S.weddings.filter(x=>x.id!==id)});break}
     case 'view': ui.view=b.dataset.v;ui.scope='wedding';break;
     case 'tab': ui.tab=b.dataset.t;ui.msgBody=null;break;
     case 'gfilter': ui.gFilter=b.dataset.f;break;
     case 'towner': ui.tOwner=b.dataset.o;break;
-    case 'reset': S=seed();ui.wid=(active()[0]||S.weddings[0]).id;ui.scope='studio';ui.view='planner';save();toast('Datos de ejemplo restablecidos');break;
-    case 'del-guest': w.guests=w.guests.filter(g=>g.id!==id);toast('Invitado quitado');break;
+    case 'reset': {if(API())return;  // con backend borraría las bodas reales
+      const before=JSON.stringify(S);
+      S=seed();ui.wid=(active()[0]||S.weddings[0]).id;ui.scope='studio';ui.view='planner';save();
+      toast('Datos de ejemplo restablecidos',{label:'Deshacer',run:()=>{S=JSON.parse(before);ui.wid=(active()[0]||S.weddings[0]).id;save();render()}});break}
+    case 'del-guest': {const g=find(w.guests,id), ac=w.guests.filter(x=>x.plusOf===id);
+      // el acompañante se va con su titular: si queda colgado, el servidor no lo puede guardar
+      undoable(ac.length?`${g.name} y su acompañante quitados`:`${g.name} quitado de la lista`,()=>{w.guests=w.guests.filter(x=>x.id!==id&&x.plusOf!==id)});break}
     case 'unseat': find(w.guests,id).table=null;break;
     case 'add-table': w.tables++;toast(`Mesa ${w.tables} agregada`);break;
-    case 'del-tl': w.timeline=w.timeline.filter(x=>x.id!==id);break;
+    case 'del-tl': {const x=find(w.timeline,id);undoable(`"${x.title}" quitado del cronograma`,()=>{w.timeline=w.timeline.filter(y=>y.id!==id)});break}
     case 'vmove': {const v=find(w.vendors,id);const i=VSTAT.indexOf(v.status)+Number(b.dataset.d);v.status=VSTAT[Math.max(0,Math.min(4,i))];syncExpense(w,v);toast(`${v.name}: ${VLABEL[v.status]}`);break}
-    case 'approve': {const v=find(w.vendors,id);v.status='aprobado';syncExpense(w,v);toast(`Aprobaron ${v.name}. La planner ya lo ve.`);break}
-    case 'reject': {const v=find(w.vendors,id);v.status='contactado';toast(`Le pedimos otra opción a la planner para ${v.cat.toLowerCase()}`);break}
+    case 'approve': case 'reject': {const v=find(w.vendors,id), ok=a==='approve';
+      const msg=ok?`Aprobaron ${v.name}. La planner ya lo ve.`:`Le pedimos otra opción a la planner para ${v.cat.toLowerCase()}`;
+      if(isCouple()){b.disabled=true;
+        AL().decide(w.id,v.id,a).then(()=>toast(msg),err=>toast(err.status===409?'Ese presupuesto ya no espera respuesta':`No se pudo guardar: ${err.message}`));return}
+      v.status=ok?'aprobado':'contactado';if(ok)syncExpense(w,v);toast(msg);break}
+    case 'copy-glink': {const g=find(w.guests,id), link=rsvpLink(w,g);
+      (navigator.clipboard?.writeText(link)||Promise.reject()).then(()=>toast(`Link de ${firstName(g.name)} copiado: entra directo a su respuesta`),()=>toast(link));return}
     case 'copy-rsvp': {const link=rsvpLink(w);
       (navigator.clipboard?.writeText(link)||Promise.reject()).then(()=>toast('Link de RSVP copiado'),()=>toast(link));return}
-    case 'open-rsvp': location.hash='rsvp/'+w.slug;return;
+    case 'open-rsvp': ui.rsvpOpened=false;location.hash=rsvpLink(w).split('#')[1];return;
     case 'edit-partners': {const [a,b2]=w.partners;return form('Contactos de la pareja',[
       {id:'n1',label:`Nombre de ${a.role.toLowerCase()}`,value:a.name,req:1},{id:'p1',label:'Teléfono',value:a.phone,ph:'+54 381 …'},{id:'e1',label:'Mail',type:'email',value:a.email},{id:'i1',label:'Instagram',value:a.ig,ph:'@usuario'},
       {id:'n2',label:`Nombre de ${b2.role.toLowerCase()}`,value:b2.name,req:1},{id:'p2',label:'Teléfono',value:b2.phone,ph:'+54 381 …'},{id:'e2',label:'Mail',type:'email',value:b2.email},{id:'i2',label:'Instagram',value:b2.ig,ph:'@usuario'}],
@@ -1251,14 +1453,14 @@ document.addEventListener('click',e=>{
       {id:'place',label:'Dónde',value:'Oficina del estudio'}],
       v=>{w.meetings.push({id:uid(),...v,done:false});toast('Reunión agendada')});
     case 'meet-done': {const m=w.meetings.find(x=>x.id===id);m.done=true;toast('Reunión marcada como hecha');break}
-    case 'del-meet': w.meetings=w.meetings.filter(x=>x.id!==id);break;
+    case 'del-meet': {const m=find(w.meetings,id);undoable(`Reunión "${m.title}" quitada`,()=>{w.meetings=w.meetings.filter(x=>x.id!==id)});break}
     case 'add-log': return form('Nueva nota en la bitácora',[
       {id:'title',label:'Título',req:1,ph:'Ej: Llamada por el catering'},
       {id:'kind',label:'Tipo',type:'select',options:LOGKIND},
       {id:'date',label:'Fecha',type:'date',value:fmtISO(today0()),req:1},
       {id:'body',label:'Qué pasó',type:'textarea',rows:4,req:1,ph:'Lo que se habló y lo que quedó pendiente'}],
       v=>{w.log.push({id:uid(),...v});toast('Nota guardada en la bitácora')});
-    case 'del-log': w.log=w.log.filter(x=>x.id!==id);break;
+    case 'del-log': {const l=find(w.log,id);undoable(`Nota "${l.title}" borrada`,()=>{w.log=w.log.filter(x=>x.id!==id)});break}
     case 'new-lead': return form('Nueva consulta',[
       {id:'n1',label:'Nombre de la novia',req:1,ph:'Ej: Agustina Robles'},
       {id:'n2',label:'Nombre del novio',req:1,ph:'Ej: Ramiro Ledesma'},
@@ -1274,7 +1476,7 @@ document.addEventListener('click',e=>{
             src:v.src,first:0,note:v.note||'Sin detalles cargados.',
             p1:{name:v.n1,phone:v.phone,email:v.email,ig:''},p2:{name:v.n2,phone:'',email:'',ig:''}},v.date);
         S.weddings.push(l);ui.scope='leads';toast(`Consulta de ${l.couple} registrada`)},'Registrar consulta');
-    case 'add-guest': return form('Nuevo invitado',[{id:'name',label:'Nombre y apellido',req:1,ph:'Ej: Carolina Terán'},{id:'side',label:'Invitado de',type:'select',options:['Novia','Novio']},{id:'group',label:'Grupo',type:'select',options:['Familia','Amigos','Trabajo','Facultad']},{id:'rsvp',label:'RSVP',type:'select',options:Object.entries(RSVP),value:'pendiente'},{id:'diet',label:'Menú',type:'select',options:[['','Estándar'],'Vegetariano','Vegano','Celíaco']}],v=>{w.guests.unshift({id:uid(),...v,table:null});ui.gFilter='todos';ui.gQuery='';toast(`${v.name} agregado a la lista`)},'Agregar invitado');
+    case 'add-guest': return form('Nuevo invitado',[{id:'name',label:'Nombre y apellido',req:1,ph:'Ej: Carolina Terán'},{id:'side',label:'Invitado de',type:'select',options:['Novia','Novio']},{id:'group',label:'Grupo',type:'select',options:['Familia','Amigos','Trabajo','Facultad']},{id:'rsvp',label:'RSVP',type:'select',options:Object.entries(RSVP),value:'pendiente'},{id:'diet',label:'Menú',type:'select',options:[['','Estándar'],'Vegetariano','Vegano','Celíaco']},{id:'plus',label:'¿Puede venir con acompañante?',type:'select',options:[['no','No'],['si','Sí']],value:'no'},{id:'phone',label:'Teléfono',ph:'+54 381 …'}],v=>{w.guests.unshift({id:uid(),name:v.name,side:v.side,group:v.group,rsvp:v.rsvp,diet:v.diet,table:null,kind:'adulto',plus:v.plus==='si',plusOf:null,phone:v.phone,token:tok()});ui.gFilter='todos';ui.gQuery='';toast(`${v.name} agregado a la lista`)},'Agregar invitado');
     case 'add-expense': return form('Nuevo gasto',[{id:'concept',label:'Concepto',req:1,ph:'Ej: Cabina de fotos'},{id:'cat',label:'Categoría',type:'select',options:[...new Set(w.vendors.map(v=>v.cat).concat('Otros'))]},{id:'total',label:'Monto total (ARS)',type:'number',req:1,min:0},{id:'paid',label:'Ya pagado (ARS)',type:'number',value:0,min:0},{id:'due',label:'Vencimiento',type:'date',value:addDays(w.date,-10)}],v=>{w.expenses.push({id:uid(),concept:v.concept,cat:v.cat,vendorId:null,total:+v.total,paid:Math.min(+v.paid||0,+v.total),due:v.due||addDays(w.date,-10)});toast('Gasto agregado')},'Agregar gasto');
     case 'pay': {const ex=find(w.expenses,id);return form(`Pago a ${esc(ex.concept)}`,[{id:'amt',label:`Monto (saldo ${money(ex.total-ex.paid)})`,type:'number',value:ex.total-ex.paid,min:1,req:1}],v=>{ex.paid=Math.min(ex.total,ex.paid+(+v.amt||0));toast(ex.paid>=ex.total?'Pagado completo':`Pago registrado · resta ${money(ex.total-ex.paid)}`)},'Registrar pago')}
     case 'add-vendor': return form('Nuevo proveedor',[{id:'name',label:'Nombre',req:1},{id:'cat',label:'Rubro',type:'select',options:['Salón / lugar','Catering','Fotografía y video','DJ / Música','Ambientación y flores','Vestido y traje','Torta y mesa dulce','Peinado y maquillaje','Invitaciones','Transporte','Cabina de fotos','Otros']},{id:'contact',label:'Contacto',ph:'Nombre de la persona'},{id:'phone',label:'Teléfono',ph:'+54 381 …'},{id:'amount',label:'Presupuesto (ARS)',type:'number',value:0,min:0}],v=>{w.vendors.push({id:uid(),...v,amount:+v.amount||0,status:'contactado'});ui.tab='proveedores';toast(`${v.name} agregado como contactado`)},'Agregar proveedor');
@@ -1308,7 +1510,10 @@ function rescaleFee(w,nf){
   const un=ins.filter(i=>!i.paid), viejo=sum(un,i=>i.amount)||1;
   un.forEach((i,k)=>{i.amount=k===un.length-1?resto-sum(un.slice(0,k),x=>x.amount):Math.round(i.amount/viejo*resto/1000)*1000});
 }
-const rsvpLink=w=>location.origin+location.pathname+'#rsvp/'+w.slug;
+/* link general (busca por nombre) o personal (entra directo); con backend el
+   general lleva el id de la boda porque dos bodas pueden tener el mismo slug */
+const rsvpBase=()=>location.origin+location.pathname;
+const rsvpLink=(w,g)=>rsvpBase()+'#rsvp/'+w.slug+(g&&g.token?'/'+g.token:API()?'/'+w.id:'');
 function syncExpense(w,v){
   const has=w.expenses.find(x=>x.vendorId===v.id);
   if(VSTAT.indexOf(v.status)>=2&&!has&&v.amount>0)w.expenses.push({id:uid(),concept:v.name,cat:v.cat,vendorId:v.id,total:v.amount,paid:0,due:addDays(w.date,-10)});
@@ -1321,7 +1526,10 @@ document.addEventListener('change',e=>{
   const c=e.target.dataset.c;if(!c||c==='gq'||c==='rq')return;const w=W(),id=e.target.dataset.id;
   if(c==='rsvp'){const g=find(w.guests,id);g.rsvp=e.target.value;if(g.rsvp!=='si')g.table=null}
   if(c==='table'){find(w.guests,id).table=e.target.value?+e.target.value:null}
-  if(c==='task'){const t=find(w.tasks,id);t.done=e.target.checked;if(t.done)toast('Tarea completada')}
+  if(c==='task'){const t=find(w.tasks,id);
+    if(isCouple()){e.target.disabled=true;AL().taskDone(w.id,t.id,e.target.checked)
+      .then(()=>{if(e.target.checked)toast('Tarea completada')},err=>toast(`No se pudo guardar: ${err.message}`));return}
+    t.done=e.target.checked;if(t.done)toast('Tarea completada')}
   if(c==='mselect'){const v=e.target.value;
     if(v==='studio'||v==='leads'||v==='negocio'){ui.scope=v;ui.view='planner'}
     else{ui.scope='wedding';ui.wid=v;ui.tab='resumen'}}
@@ -1330,19 +1538,69 @@ document.addEventListener('change',e=>{
 document.addEventListener('input',e=>{
   const c=e.target.dataset.c;
   if(c==='gq'){ui.gQuery=e.target.value;ui.focus='gq';render()}
-  if(c==='rq'){ui.rsvpQuery=e.target.value;ui.focus='rq';render()}
+  if(c==='rq'){ui.rsvpQuery=e.target.value;ui.focus='rq';if(ui.rsvp==='remote')searchPublic(norm(ui.rsvpQuery.trim()));render()}
   if(c==='msgbody'){ui.msgBody=e.target.value}
 });
 
-render();
-
-/* Con backend configurado (ver js/store.js) el estado viene de la API.
-   Sin backend esto no hace nada y la demo sigue andando sola. */
-if(window.Alianza&&window.Alianza.enabled)window.Alianza.start(st=>{
-  S=migrate(st);
-  ui.wid=(active()[0]||S.weddings[0]||{}).id;
-  ui.scope=window.Alianza.user&&window.Alianza.user.role==='novios'?'wedding':'studio';
-  if(ui.scope==='wedding'){ui.view='portal';ui.wid=window.Alianza.user.weddingId}
-  render();
+/* ================= arranque ================= */
+document.addEventListener('submit',e=>{
+  const f=e.target.closest('[data-bot]');if(!f)return;e.preventDefault();
+  const q=f.querySelector('#botq').value.trim();if(!q)return;
+  ui.botLog.push({id:'libre',q,a:botAnswer(rsvpWedding(),q)});ui.focus='botq';render();
 });
+/* tarjetas clickeables con teclado: Enter o Espacio hacen lo mismo que el click */
+document.addEventListener('keydown',e=>{
+  if((e.key==='Enter'||e.key===' ')&&e.target.matches('[tabindex][data-a]')){e.preventDefault();e.target.click()}
+});
+
+/* el servidor manda bodas nuevas: respuestas de invitados, decisiones de los
+   novios o la versión elegida en un conflicto */
+const fromServer=list=>migrate({weddings:list,v:1}).weddings;
+function onRemote({all,replace}){
+  if(all)S={weddings:fromServer(all),v:5};
+  if(replace)fromServer(replace).forEach(fw=>{const i=S.weddings.findIndex(x=>x.id===fw.id);if(i>=0)S.weddings[i]=fw;else S.weddings.push(fw)});
+  if(!S.weddings.some(w=>w.id===ui.wid))ui.wid=(active()[0]||S.weddings[0]||{}).id;
+  save();render();
+}
+function boot(){
+  const A=AL();
+  A.onStatus=paintSync;A.onRemote=onRemote;A.onConflict=conflictDialog;
+  let got=false;
+  A.start(st=>{
+    got=true;
+    S={weddings:fromServer(st.weddings||[]),v:5};
+    ui.wid=(active()[0]||S.weddings[0]||{}).id;
+    ui.scope=isCouple()?'wedding':'studio';ui.view=isCouple()?'portal':'planner';
+    ui.booting=false;save();render();
+  }).then(()=>{
+    // base vacía y nada en el navegador: se arranca de cero, no con los datos de ejemplo
+    if(!got&&API()&&AL().user)S={weddings:[],v:5};
+    if(ui.booting){ui.booting=false;render()}
+  });
+}
+
+/* Entrada: dos anillos que se dibujan y se enlazan (eso es una alianza) y la
+   marca. Una vez por sesión, se saltea con click o tecla y no corre con
+   movimiento reducido. Si el script falla, la app ya está dibujada abajo. */
+function intro(){
+  let seen=false;try{seen=sessionStorage.getItem('alianza-intro')==='1';sessionStorage.setItem('alianza-intro','1')}catch(e){}
+  if(seen||ui.rsvp||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  const el=document.createElement('div');el.className='intro';el.setAttribute('aria-hidden','true');
+  el.innerHTML=`<div class="intro-mark">
+    <svg viewBox="0 0 120 64"><circle class="r1" cx="46" cy="32" r="24"/><circle class="r2" cx="74" cy="32" r="24"/><path class="r1-front" d="M60 12.51A24 24 0 0 1 70 32"/></svg>
+    <b>Alianza</b><span>wedding studio</span></div>`;
+  document.body.appendChild(el);
+  document.documentElement.classList.add('intro-on');
+  let gone=false;
+  const end=()=>{if(gone)return;gone=true;el.classList.add('out');document.documentElement.classList.remove('intro-on');
+    setTimeout(()=>el.remove(),520);removeEventListener('keydown',end);};
+  el.addEventListener('click',end);addEventListener('keydown',end);
+  setTimeout(end,1650);
+}
+
+ui.booting=API()&&!ui.rsvp;
+intro();
+render();
+if(ui.booting)boot();
+else if(API()&&ui.rsvp==='remote'){AL().onStatus=paintSync}
 })();

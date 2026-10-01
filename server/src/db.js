@@ -34,7 +34,34 @@ export async function tx(fn) {
   }
 }
 
+/* Migraciones versionadas: cada archivo de migrations/ corre una sola vez,
+   en orden y dentro de su transacción. El lock evita que dos instancias que
+   arrancan juntas apliquen la misma. */
 export async function migrate() {
-  const sql = fs.readFileSync(path.join(here, '..', 'schema.sql'), 'utf8');
-  await pool.query(sql);
+  const dir = path.join(here, '..', 'migrations');
+  const files = fs.readdirSync(dir).filter((f) => /^\d+_.+\.sql$/.test(f)).sort();
+  const client = await pool.connect();
+  try {
+    await client.query('select pg_advisory_lock(72310)');
+    await client.query(`create table if not exists schema_migrations (
+      version text primary key, applied_at timestamptz not null default now())`);
+    const { rows } = await client.query('select version from schema_migrations');
+    const done = new Set(rows.map((r) => r.version));
+    for (const f of files) {
+      if (done.has(f)) continue;
+      await client.query('begin');
+      try {
+        await client.query(fs.readFileSync(path.join(dir, f), 'utf8'));
+        await client.query('insert into schema_migrations (version) values ($1)', [f]);
+        await client.query('commit');
+        console.log(`migración aplicada: ${f}`);
+      } catch (err) {
+        await client.query('rollback');
+        throw new Error(`falló la migración ${f}: ${err.message}`);
+      }
+    }
+  } finally {
+    await client.query('select pg_advisory_unlock(72310)').catch(() => {});
+    client.release();
+  }
 }

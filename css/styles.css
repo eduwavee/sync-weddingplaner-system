@@ -6,14 +6,17 @@ img{max-width:100%}
 :root{
   color-scheme:light;
   --bg:#F3F2F6; --surface:#FFFFFF; --surface-2:#F8F7FA; --line:#E2DFE8; --line-strong:#CBC6D4;
-  --ink:#231C2E; --ink-2:#5B536A; --ink-3:#8A8397;
-  --accent:#3B7A69; --accent-ink:#FFFFFF; --accent-soft:#E2EFEB;
+  --ink:#231C2E; --ink-2:#5B536A; --ink-3:#6E6779;   /* ink-3 ≥4.5:1 sobre bg, surface y surface-2 */
+  --accent:#3B7A69; --accent-ink:#FFFFFF; --accent-soft:#E2EFEB; --accent-text:#33695B;   /* texto sobre accent-soft */
   --blush:#B8687E; --blush-soft:#F6E7EC;
-  --ok:#2F7D4F; --ok-soft:#E1F1E7; --warn:#A8701A; --warn-soft:#FBF0DC; --bad:#B23A48; --bad-soft:#F8E3E6;
+  --ok:#2A6F45; --ok-soft:#E1F1E7; --warn:#965F0F; --warn-soft:#FBF0DC; --bad:#B23A48; --bad-soft:#F8E3E6;
   --shadow:0 1px 2px rgba(35,28,46,.06),0 8px 24px -12px rgba(35,28,46,.18);
   --serif:"Cormorant Garamond",Georgia,"Times New Roman",serif;
   --sans:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"DM Mono",ui-monospace,Menlo,Consolas,monospace;
+  /* movimiento: frenado exponencial; feedback rápido, vistas un poco más lentas */
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --t-fast:140ms; --t:220ms; --t-view:420ms;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -43,11 +46,10 @@ button{cursor:pointer}
 .studio-btn.on{background:var(--surface);box-shadow:var(--shadow)}
 .side-foot{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding:0 8px;font-size:12px;color:var(--ink-3)}
 .linkbtn{all:unset;cursor:pointer;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px;font-size:12px}
-.mobile-bar{display:none}
+.mobile-bar{display:none;margin:-26px calc(-1*clamp(16px,3.2vw,40px)) 20px}
 
 .main{padding-inline:clamp(16px,3.2vw,40px);padding-block:26px 60px;min-width:0}
 .head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px;margin-bottom:18px}
-.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);font-weight:600}
 .couple{font-family:var(--serif);font-weight:600;font-size:clamp(34px,4.6vw,52px);line-height:1;margin:6px 0 8px;letter-spacing:-.01em;text-wrap:balance}
 .couple i{color:var(--blush);font-weight:500}
 .meta{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--ink-2);font-size:13px}
@@ -85,9 +87,10 @@ button{cursor:pointer}
 .pill.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
 .pill.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
 .pill.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
-.pill.acc{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.pill.acc{background:var(--accent-soft);color:var(--accent-text);border-color:transparent}
 .pill.plain::before{display:none}
-.btn{border:1px solid var(--line-strong);background:var(--surface);padding:7px 13px;border-radius:9px;font-weight:600;font-size:13px;display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+.btn{border:1px solid var(--line-strong);background:var(--surface);padding:7px 13px;border-radius:9px;font-weight:600;font-size:13px;display:inline-flex;gap:6px;align-items:center;white-space:nowrap;
+  transition:border-color var(--t-fast),background-color var(--t-fast),transform var(--t-fast) var(--ease-out),filter var(--t-fast)}
 .btn:hover{border-color:var(--ink-3)}
 .btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .btn.pri:hover{filter:brightness(1.05)}
@@ -205,6 +208,7 @@ td.r,th.r{text-align:right}
 
 /* portal */
 .hero{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:clamp(20px,4vw,40px);display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;margin-bottom:16px;position:relative;overflow:hidden}
+.hero-body{position:relative;z-index:1;min-width:0}
 .hero::after{content:"";position:absolute;right:-60px;top:-60px;width:240px;height:240px;border-radius:50%;border:1px solid var(--line);box-shadow:0 0 0 22px var(--surface),0 0 0 23px var(--line),0 0 0 46px var(--surface),0 0 0 47px var(--line);pointer-events:none;opacity:.8}
 .hero .couple{font-size:clamp(40px,6vw,68px)}
 .ring{position:relative;width:132px;height:132px;z-index:1}
@@ -239,7 +243,7 @@ a{color:var(--accent);text-underline-offset:3px;text-decoration-thickness:1px}
 
 /* ============ navegación lateral ============ */
 .navblock{display:flex;flex-direction:column;gap:2px}
-.studio-btn .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 7px}
+.studio-btn .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;background:var(--accent-soft);color:var(--accent-text);border-radius:999px;padding:1px 7px}
 
 /* ============ ficha de la pareja ============ */
 .prow{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0}
@@ -282,9 +286,7 @@ textarea.input{resize:vertical;min-height:72px;line-height:1.55;font-size:13.5px
 .rsvp-head .cd{margin:22px 0 0;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3)}
 .rsvp-head .cd b{display:block;font-size:44px;font-weight:500;letter-spacing:-.03em;color:var(--blush);line-height:1;margin-bottom:6px}
 .rsvp-head .cd span{display:block}
-.rsvp-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:clamp(20px,5vw,30px);box-shadow:var(--shadow);
-  animation:rise .5s cubic-bezier(.16,1,.3,1) both}
-@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.rsvp-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:clamp(20px,5vw,30px);box-shadow:var(--shadow)}
 .rsvp-card h2{font-family:var(--serif);font-size:30px;font-weight:600;margin:0 0 6px;line-height:1.1}
 .rsvp-card .lead-p{margin:0 0 20px;color:var(--ink-2);font-size:14px;max-width:46ch}
 .rsvp-card .back{display:inline-block;margin-bottom:14px}
@@ -313,7 +315,6 @@ textarea.input{resize:vertical;min-height:72px;line-height:1.55;font-size:13.5px
 .rsvp-foot{text-align:center;font-size:12px;color:var(--ink-3)}
 .rsvp-foot b{font-weight:600;color:var(--ink-2)}
 @media (max-width:420px){.opts{grid-template-columns:1fr}}
-@media (prefers-reduced-motion:reduce){.rsvp-card{animation:none}}
 
 
 /* ============ centro de mensajes ============ */
@@ -379,4 +380,143 @@ textarea.input{resize:vertical;min-height:72px;line-height:1.55;font-size:13.5px
   .task .due,.task .pill{grid-column:2}
   .tli{grid-template-columns:50px 22px 1fr auto}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+/* ============ íconos ============ */
+.ic{width:1.15em;height:1.15em;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.2em}
+.ic.open{transform:rotate(90deg)}
+.side-toggle .ic,.linkbtn.tw .ic{transition:transform var(--t) var(--ease-out)}
+.btn .ic{width:15px;height:15px}
+.brand{align-items:center;flex-wrap:nowrap}
+.brand span{white-space:nowrap}
+.side .brand{gap:7px}
+.side .brand b{font-size:26px}
+.side .brand span{font-size:10px;letter-spacing:.12em}
+.brand-ic{width:22px;height:22px;color:var(--blush);stroke-width:1.5}
+.studio-btn .ic{color:var(--ink-3);transition:color var(--t-fast)}
+.studio-btn.on .ic,.studio-btn:hover .ic{color:var(--accent)}
+.linkbtn{display:inline-flex;align-items:center;gap:5px}
+.linkbtn.tw{gap:6px}
+.linkbtn.tw .ic{color:var(--ink-3)}
+.mesa li button{display:grid;place-items:center;border-radius:5px}
+.mesa li button .ic{width:13px;height:13px}
+.side-empty{font-size:12px;padding:0 10px}
+.side-toggle{text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:600;text-decoration:none;color:var(--ink-3)}
+.side-toggle:hover{color:var(--ink)}
+.side-foot .who{color:var(--ink-2);font-weight:600}
+.nowrap{white-space:nowrap}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+fieldset.opts{border:0;padding:0;margin-inline:0;min-width:0}
+
+/* ============ encabezados ============ */
+.meta .meta-lead{color:var(--ink);font-weight:600}
+.portal-head{align-items:center}
+.portal-head .portal-note{margin:0;flex:1 1 320px}
+
+/* ============ estados de controles ============ */
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.pri:disabled{filter:saturate(.6)}
+.chip,.tab,.witem,.studio-btn,.seg button,.match,.opt{transition:background-color var(--t-fast),border-color var(--t-fast),color var(--t-fast),box-shadow var(--t)}
+.chip:hover:not(.on){border-color:var(--line-strong);color:var(--ink)}
+.wcard{transition:border-color var(--t-fast),box-shadow var(--t) var(--ease-out),transform var(--t) var(--ease-out)}
+.wcard:hover{box-shadow:var(--shadow)}
+.wcard:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:16px}
+.chk{transition:background-color var(--t-fast),border-color var(--t-fast)}
+.chk:checked::after{animation:tick var(--t) var(--ease-out)}
+@keyframes tick{from{transform:rotate(45deg) translate(-1px,-1px) scale(.4);opacity:0}}
+.chk:disabled{opacity:.6;cursor:progress}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;display:inline-block;vertical-align:-2px;margin-right:8px;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ============ estado de guardado ============ */
+.sync{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-2);min-height:20px;flex-wrap:wrap}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.sync[data-tone="busy"] i{background:var(--accent);animation:pulse 1.1s ease-in-out infinite}
+.sync[data-tone="warn"] i{background:var(--warn)}
+.sync[data-tone="bad"] i{background:var(--bad)}
+.sync[data-tone="bad"]{color:var(--bad)}
+.sync .linkbtn{font-size:12px}
+.sync.compact span{display:none}
+.sync.compact[data-tone="bad"] span,.sync.compact[data-tone="warn"] span{display:inline}
+@keyframes pulse{50%{opacity:.35}}
+.couple-bar .sync{margin-left:auto}
+.app.solo{grid-template-columns:minmax(0,1fr)}
+.app.solo .main{max-width:1180px;width:100%;margin:0 auto}
+.app.solo .mobile-bar{display:flex;gap:14px;align-items:center;margin:-10px 0 18px;padding:0 0 14px;border-bottom:1px solid var(--line);background:none;position:static}
+.boot{min-height:100vh;display:grid;place-content:center;justify-items:center;gap:14px;color:var(--ink-2);font-size:13px}
+.boot-ic{width:44px;height:44px;color:var(--blush);stroke-width:1.2;animation:pulse 1.4s ease-in-out infinite}
+
+/* ============ modal y toast ============ */
+.overlay{animation:fade var(--t) ease-out both}
+.overlay .modal{animation:pop var(--t-view) var(--ease-out) both}
+.overlay.closing{animation:fade 140ms ease-in reverse both}
+.overlay.closing .modal{animation:pop 140ms ease-in reverse both}
+@keyframes fade{from{opacity:0}}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.985)}}
+.modal-lead{margin:-8px 0 18px;font-size:13.5px;color:var(--ink-2);line-height:1.55}
+.modal .err{color:var(--bad);font-size:12.5px;min-height:1.2em;font-weight:500}
+.field .opt-l{font-weight:500;color:var(--ink-3)}
+.toast{display:flex;align-items:center;gap:14px;animation:toast-in var(--t) var(--ease-out) both;max-width:calc(100vw - 32px)}
+.toast.out{animation:toast-in 180ms ease-in reverse both}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+.toast-btn{border:0;background:none;color:#BFE3D8;font-weight:700;padding:2px 0;text-decoration:underline;text-underline-offset:3px}
+.toast-btn:hover{color:#fff}
+
+/* ============ entrada a cada vista ============
+   Sólo cuando cambia la vista o el tab (render() redibuja en cada click).
+   Fundido corto con un desplazamiento mínimo: orienta sin hacer esperar. */
+.enter-view>*:not(.mobile-bar),.enter-tab .tabs~*{animation:view-in var(--t-view) var(--ease-out) both}
+.enter-view>*:nth-child(3){animation-delay:40ms}
+.enter-view>*:nth-child(4){animation-delay:80ms}
+.enter-view>*:nth-child(n+5){animation-delay:110ms}
+@keyframes view-in{from{opacity:0;transform:translateY(6px)}}
+/* las barras crecen desde cero al entrar: el valor se lee como avance */
+.enter-view .bar i,.enter-tab .bar i,.enter-view .stack,.enter-tab .stack{transform-origin:left;animation:grow 700ms var(--ease-out) 120ms both}
+@keyframes grow{from{transform:scaleX(0)}}
+
+/* ============ intro: dos anillos que se enlazan ============ */
+.intro{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;cursor:pointer}
+.intro.out{animation:intro-out 500ms var(--ease-out) both;pointer-events:none}
+@keyframes intro-out{to{opacity:0;filter:blur(6px);transform:scale(1.02)}}
+.intro-mark{display:grid;justify-items:center;gap:2px}
+.intro-mark svg{width:132px;height:70px;overflow:visible;margin-bottom:6px}
+.intro-mark circle,.intro-mark path,.rsvp-rings circle,.rsvp-rings path{fill:none;stroke-width:2.2;stroke-linecap:round}
+.intro-mark .r1,.intro-mark .r1-front,.rsvp-rings .r1,.rsvp-rings .r1-front{stroke:var(--blush)}
+.intro-mark .r2,.rsvp-rings .r2{stroke:var(--accent)}
+/* cada anillo se dibuja con su trazo, se acercan hasta enlazarse y el arco de
+   adelante cierra el cruce: arriba pasa uno, abajo el otro */
+.intro-mark .r1,.intro-mark .r2{stroke-dasharray:151;stroke-dashoffset:151}
+.intro-mark .r1{animation:draw 760ms var(--ease-out) 80ms forwards,link-l 620ms var(--ease-out) 520ms both}
+.intro-mark .r2{animation:draw 760ms var(--ease-out) 220ms forwards,link-r 620ms var(--ease-out) 520ms both}
+.intro-mark .r1-front{stroke-dasharray:26;stroke-dashoffset:26;animation:draw 240ms ease-out 1000ms forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes link-l{from{transform:translateX(-10px)}}
+@keyframes link-r{from{transform:translateX(10px)}}
+.intro-mark b{font-family:var(--serif);font-style:italic;font-weight:600;font-size:56px;line-height:1;letter-spacing:-.01em;color:var(--ink);
+  animation:word-in 700ms var(--ease-out) 560ms both}
+.intro-mark span{font-size:11px;text-transform:uppercase;letter-spacing:.3em;color:var(--ink-3);margin-top:6px;animation:word-in 700ms var(--ease-out) 700ms both}
+@keyframes word-in{from{opacity:0;transform:translateY(8px);filter:blur(4px)}}
+html.intro-on body{overflow:hidden}
+
+/* ============ RSVP: la invitación se abre ============ */
+.rsvp-rings{display:block;width:96px;height:48px;margin:0 auto 18px;overflow:visible}
+.rsvp-head.opening .rsvp-rings circle{stroke-dasharray:139;stroke-dashoffset:139;animation:draw 900ms var(--ease-out) 100ms forwards}
+.rsvp-head.opening .rsvp-rings .r2{animation-delay:260ms}
+.rsvp-head.opening .rsvp-rings .r1-front{stroke-dasharray:24;stroke-dashoffset:24;animation:draw 260ms ease-out 1050ms forwards}
+.rsvp-head.opening .couple{animation:word-in 900ms var(--ease-out) 420ms both}
+.rsvp-head.opening .when,.rsvp-head.opening .where{animation:view-in 700ms var(--ease-out) 680ms both}
+.rsvp-head.opening .cd{animation:view-in 700ms var(--ease-out) 800ms both}
+.rsvp-head.opening~.rsvp-card{animation:view-in 700ms var(--ease-out) 900ms both}
+.rsvp-head.opening~.bot,.rsvp-head.opening~.rsvp-foot{animation:fade 600ms ease-out 1100ms both}
+.rsvp-wait{min-height:60vh;display:grid;place-content:center;font-size:14px;color:var(--ink-2)}
+
+/* ============ movimiento reducido ============
+   Sin desplazamientos ni dibujos: quedan sólo fundidos cortos, que siguen
+   confirmando el cambio de estado. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:1ms!important;scroll-behavior:auto!important}
+  .enter-view>*:not(.mobile-bar),.enter-tab .tabs~*,.overlay,.toast{animation:fade 160ms ease-out both!important}
+  .wcard:hover,.btn:active:not(:disabled){transform:none}
+  .spin,.sync[data-tone="busy"] i,.boot-ic{animation:none!important}
+}
